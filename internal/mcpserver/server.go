@@ -113,6 +113,8 @@ func (s *Server) Start() {
 		server.ServerTool{Tool: getGroceryListTool(), Handler: s.getGroceryList},
 		server.ServerTool{Tool: updateGroceryItemAisleTool(), Handler: s.updateGroceryItemAisle},
 		server.ServerTool{Tool: setupWoodmansAislesTool(), Handler: s.setupWoodmansAisles},
+		server.ServerTool{Tool: getMealPlanTool(), Handler: s.getMealPlan},
+		server.ServerTool{Tool: addMealToPlanTool(), Handler: s.addMealToPlan},
 	)
 
 	if err := server.ServeStdio(s.server); err != nil {
@@ -521,4 +523,124 @@ func (s *Server) updateRecipe(ctx context.Context, req mcp.CallToolRequest) (*mc
 		MIMEType: "text/markdown",
 		Text:     savedRecipe.ToMarkdown(),
 	}), nil
+}
+
+func getMealPlanTool() mcp.Tool {
+	return mcp.NewTool("get_meal_plan",
+		mcp.WithDescription("Fetch the meal plan for a date range."),
+		mcp.WithString("start_date",
+			mcp.Description("Start date in YYYY-MM-DD format."),
+			mcp.Required(),
+		),
+		mcp.WithString("end_date",
+			mcp.Description("End date in YYYY-MM-DD format."),
+			mcp.Required(),
+		),
+	)
+}
+
+func (s *Server) getMealPlan(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	startStr, _ := req.Params.Arguments["start_date"].(string)
+	endStr, _ := req.Params.Arguments["end_date"].(string)
+
+	start, err := time.Parse("2006-01-02", startStr)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("invalid start_date: %v", err)), nil
+	}
+	end, err := time.Parse("2006-01-02", endStr)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("invalid end_date: %v", err)), nil
+	}
+
+	entries, err := s.paprika3.ListMealPlanEntries(ctx, start, end)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	mealTypeName := map[int]string{0: "Breakfast", 1: "Lunch", 2: "Dinner", 3: "Snack"}
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("## Meal Plan: %s to %s\n\n", startStr, endStr))
+	if len(entries) == 0 {
+		sb.WriteString("No meals planned for this period.\n")
+	} else {
+		sb.WriteString("| Date | Meal | Recipe |\n|---|---|---|\n")
+		for _, e := range entries {
+			sb.WriteString(fmt.Sprintf("| %s | %s | %s |\n", e.Date, mealTypeName[e.MealType], e.RecipeName))
+		}
+	}
+
+	return mcp.NewToolResultText(sb.String()), nil
+}
+
+func addMealToPlanTool() mcp.Tool {
+	return mcp.NewTool("add_meal_to_plan",
+		mcp.WithDescription("Add a recipe to the meal plan. Idempotent — if the same recipe is already in this slot on this date, does nothing."),
+		mcp.WithString("recipe_uid",
+			mcp.Description("UID of the recipe to add."),
+			mcp.Required(),
+		),
+		mcp.WithString("date",
+			mcp.Description("Date in YYYY-MM-DD format."),
+			mcp.Required(),
+		),
+		mcp.WithString("meal_type",
+			mcp.Description("One of: breakfast, lunch, dinner, snack"),
+			mcp.Required(),
+		),
+	)
+}
+
+func (s *Server) addMealToPlan(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	recipeUID, _ := req.Params.Arguments["recipe_uid"].(string)
+	dateStr, _ := req.Params.Arguments["date"].(string)
+	mealTypeStr, _ := req.Params.Arguments["meal_type"].(string)
+
+	mealTypeMap := map[string]int{
+		"breakfast": paprika.MealTypeBreakfast,
+		"lunch":     paprika.MealTypeLunch,
+		"dinner":    paprika.MealTypeDinner,
+		"snack":     paprika.MealTypeSnack,
+	}
+	mealType, ok := mealTypeMap[strings.ToLower(mealTypeStr)]
+	if !ok {
+		return mcp.NewToolResultError("meal_type must be one of: breakfast, lunch, dinner, snack"), nil
+	}
+
+	date, err := time.Parse("2006-01-02", dateStr)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("invalid date: %v", err)), nil
+	}
+
+	// Idempotency check.
+	// time.Parse("2006-01-02", ...) returns UTC midnight. ListMealPlanEntries
+	// filters using Truncate(24h) comparisons, also in UTC. This is correct
+	// as long as the server is not running in a non-UTC timezone that shifts
+	// the date boundary — keep TZ=UTC in the MCP config env to be safe.
+	existing, err := s.paprika3.ListMealPlanEntries(ctx, date, date)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	for _, e := range existing {
+		if e.RecipeUID == recipeUID && e.MealType == mealType {
+			return mcp.NewToolResultText(fmt.Sprintf(
+				"Recipe already in %s slot on %s — no change made.", mealTypeStr, dateStr,
+			)), nil
+		}
+	}
+
+	entry := paprika.MealPlanEntry{
+		RecipeUID:  recipeUID,
+		RecipeName: recipeUID, // fallback: use UID as name; Paprika will resolve the display name
+		Date:       dateStr,
+		MealType:   mealType,
+	}
+
+	if err := s.paprika3.SaveMealPlanEntry(ctx, entry); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	return mcp.NewToolResultText(fmt.Sprintf(
+		"Added recipe to %s on %s.", mealTypeStr, dateStr,
+	)), nil
 }
