@@ -5,10 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
+	"github.com/soggycactus/paprika-3-mcp/internal/aisles"
 	"github.com/soggycactus/paprika-3-mcp/internal/paprika"
 )
 
@@ -34,12 +36,18 @@ func NewServer(opts Options) (*Server, error) {
 		refreshInterval = 5 * time.Minute
 	}
 
+	am, err := aisles.Load(opts.AisleMapPath)
+	if err != nil {
+		return nil, fmt.Errorf("loading aisle map from %s: %w", opts.AisleMapPath, err)
+	}
+
 	s := server.NewMCPServer("paprika-3-mcp", opts.Version, server.WithResourceCapabilities(false, false))
 	return &Server{
 		paprika3:           paprika3,
 		server:             s,
 		logger:             opts.Logger,
 		refreshInterval:    refreshInterval,
+		aisleMap:           am,
 		aisleMapPath:       opts.AisleMapPath,
 		defaultGroceryList: opts.DefaultGroceryList,
 	}, nil
@@ -50,6 +58,7 @@ type Server struct {
 	logger             *slog.Logger
 	server             *server.MCPServer
 	refreshInterval    time.Duration
+	aisleMap           aisles.AisleMap
 	aisleMapPath       string
 	defaultGroceryList string
 }
@@ -100,7 +109,11 @@ func (s *Server) Start() {
 	}, server.ServerTool{
 		Tool:    updateRecipeTool,
 		Handler: s.updateRecipe,
-	})
+	},
+		server.ServerTool{Tool: getGroceryListTool(), Handler: s.getGroceryList},
+		server.ServerTool{Tool: updateGroceryItemAisleTool(), Handler: s.updateGroceryItemAisle},
+		server.ServerTool{Tool: setupWoodmansAislesTool(), Handler: s.setupWoodmansAisles},
+	)
 
 	if err := server.ServeStdio(s.server); err != nil {
 		s.logger.Error("Server error", "err", err)
@@ -246,6 +259,173 @@ func (s *Server) createRecipe(ctx context.Context, req mcp.CallToolRequest) (*mc
 		MIMEType: "text/markdown",
 		Text:     recipe.ToMarkdown(),
 	}), nil
+}
+
+func getGroceryListTool() mcp.Tool {
+	return mcp.NewTool("get_grocery_list",
+		mcp.WithDescription("Fetch all items in a Paprika grocery list with their current aisle assignments."),
+		mcp.WithString("list_name",
+			mcp.Description("Name of the grocery list. Omit to use the default list."),
+		),
+	)
+}
+
+func (s *Server) getGroceryList(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	items, err := s.paprika3.ListGroceryItems(ctx)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	var sb strings.Builder
+	sb.WriteString("## Grocery List\n\n")
+	sb.WriteString("| Item | Aisle | Checked |\n|---|---|---|\n")
+	for _, item := range items {
+		name := item.Name
+		if name == "" {
+			name = item.Ingredient
+		}
+		checked := " "
+		if item.Checked {
+			checked = "x"
+		}
+		sb.WriteString(fmt.Sprintf("| %s | %s | [%s] |\n", name, item.Aisle, checked))
+	}
+
+	return mcp.NewToolResultText(sb.String()), nil
+}
+
+func updateGroceryItemAisleTool() mcp.Tool {
+	return mcp.NewTool("update_grocery_item_aisle",
+		mcp.WithDescription("Set the aisle label on one or more grocery items. Pass an array of {uid, aisle} objects."),
+		mcp.WithArray("items",
+			mcp.Description("Array of objects with 'uid' (string) and 'aisle' (string) fields."),
+			mcp.Required(),
+		),
+	)
+}
+
+func (s *Server) updateGroceryItemAisle(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	rawItems, ok := req.Params.Arguments["items"].([]interface{})
+	if !ok {
+		return mcp.NewToolResultError("items must be an array"), nil
+	}
+
+	existing, err := s.paprika3.ListGroceryItems(ctx)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	byUID := make(map[string]paprika.GroceryItem, len(existing))
+	for _, item := range existing {
+		byUID[item.UID] = item
+	}
+
+	var updated, errs []string
+	for _, raw := range rawItems {
+		m, _ := raw.(map[string]interface{})
+		uid, _ := m["uid"].(string)
+		aisle, _ := m["aisle"].(string)
+		if uid == "" || aisle == "" {
+			errs = append(errs, fmt.Sprintf("skipped entry missing uid or aisle: %v", m))
+			continue
+		}
+		item, exists := byUID[uid]
+		if !exists {
+			errs = append(errs, fmt.Sprintf("uid not found: %s", uid))
+			continue
+		}
+		item.Aisle = aisle
+		if err := s.paprika3.UpdateGroceryItem(ctx, item); err != nil {
+			errs = append(errs, fmt.Sprintf("failed to update %s: %v", uid, err))
+			continue
+		}
+		updated = append(updated, item.Ingredient)
+	}
+
+	msg := fmt.Sprintf("Updated %d items.", len(updated))
+	if len(errs) > 0 {
+		msg += "\nErrors:\n- " + strings.Join(errs, "\n- ")
+	}
+	return mcp.NewToolResultText(msg), nil
+}
+
+func setupWoodmansAislesTool() mcp.Tool {
+	return mcp.NewTool("setup_woodmans_aisles",
+		mcp.WithDescription("Map all grocery list items to their Woodman's East aisle. dry_run=true (default) shows proposed changes without writing. Set dry_run=false to commit. Items not found in the aisle map are flagged for manual review."),
+		mcp.WithBoolean("dry_run",
+			mcp.Description("If true (default), return proposed changes without writing to Paprika."),
+		),
+	)
+}
+
+func (s *Server) setupWoodmansAisles(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	dryRun := true
+	if v, ok := req.Params.Arguments["dry_run"].(bool); ok {
+		dryRun = v
+	}
+
+	items, err := s.paprika3.ListGroceryItems(ctx)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	type proposal struct {
+		item     paprika.GroceryItem
+		newAisle string
+	}
+
+	var proposals []proposal
+	var unknown []string
+
+	for _, item := range items {
+		lookupKey := item.Name
+		if lookupKey == "" {
+			lookupKey = item.Ingredient
+		}
+		aisle, found := s.aisleMap.Lookup(lookupKey)
+		if !found {
+			unknown = append(unknown, lookupKey)
+			continue
+		}
+		if aisle != item.Aisle {
+			proposals = append(proposals, proposal{item: item, newAisle: aisle})
+		}
+	}
+
+	var sb strings.Builder
+	mode := "DRY RUN — no changes written"
+	if !dryRun {
+		mode = "APPLYING CHANGES"
+	}
+	sb.WriteString(fmt.Sprintf("## setup_woodmans_aisles (%s)\n\n", mode))
+
+	if len(proposals) > 0 {
+		sb.WriteString("### Changes\n\n| Item | Current Aisle | → New Aisle |\n|---|---|---|\n")
+		for _, p := range proposals {
+			displayName := p.item.Name
+			if displayName == "" {
+				displayName = p.item.Ingredient
+			}
+			sb.WriteString(fmt.Sprintf("| %s | %s | %s |\n", displayName, p.item.Aisle, p.newAisle))
+			if !dryRun {
+				p.item.Aisle = p.newAisle
+				if err := s.paprika3.UpdateGroceryItem(ctx, p.item); err != nil {
+					sb.WriteString(fmt.Sprintf("  ⚠️ error updating %s: %v\n", displayName, err))
+				}
+			}
+		}
+	} else {
+		sb.WriteString("All items already have correct aisle assignments.\n")
+	}
+
+	if len(unknown) > 0 {
+		sb.WriteString("\n### Unknown items (not in aisle map — review and add manually)\n\n")
+		for _, u := range unknown {
+			sb.WriteString(fmt.Sprintf("- %s\n", u))
+		}
+		sb.WriteString("\nTo add them: update `aisles/woodmans_east.json` and re-run.\n")
+	}
+
+	return mcp.NewToolResultText(sb.String()), nil
 }
 
 func (s *Server) updateRecipe(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
