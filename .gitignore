@@ -27,3 +27,8 @@ go.work.sum
 
 # mcp
 .mcp*
+
+# local dev artifacts
+.claude/
+docs/superpowers/
+paprika-3-mcp

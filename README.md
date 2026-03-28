@@ -1,6 +1,6 @@
 # paprika-3-mcp
 
-A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/introduction) server that exposes your **Paprika 3** recipes as LLM-readable resources — and lets an LLM like Claude create or update recipes in your Paprika app.
+A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/introduction) server that exposes your **Paprika 3** recipes as LLM-readable resources — and lets an LLM like Claude create, update, and plan meals with your Paprika app.
 
 ### 🖼️ Example: Claude using the Paprika MCP server
 
@@ -19,10 +19,23 @@ See anything missing? Open an issue on this repo to request a feature!
 
 #### 🛠 **Tools**
 
-- `create_paprika_recipe`  
-  Allows Claude to save a new recipe to your Paprika app
-- `update_paprika_recipe`  
-  Allows Claude to modify an existing recipe
+**Recipes**
+- `list_recipes` — List all recipes with name, UID, categories, prep/cook time, and star rating
+- `get_recipe` — Fetch full recipe content (ingredients, directions, notes) by UID
+- `create_paprika_recipe` — Save a new recipe to your Paprika app
+- `update_paprika_recipe` — Modify an existing recipe
+
+**Grocery List**
+- `get_grocery_list` — Fetch all items in a Paprika grocery list with their current aisle assignments
+- `update_grocery_item_aisle` — Set the aisle label on one or more grocery items
+- `setup_woodmans_aisles` — Map all grocery list items to their Woodman's East aisle (supports dry run)
+
+**Meal Plan**
+- `get_meal_plan` — Fetch the meal plan for a date range
+- `add_meal_to_plan` — Add a recipe to the meal plan (idempotent)
+
+**Pantry**
+- `get_pantry` — Fetch all items in the Paprika pantry with name, quantity, and in-stock status
 
 ## ⚙️ Prerequisites
 
@@ -34,6 +47,14 @@ See anything missing? Open an issue on this repo to request a feature!
 ## 🛠 Installation
 
 You can download a prebuilt binary from the [Releases](https://github.com/soggycactus/paprika-3-mcp/releases) page.
+
+### Build from source
+
+```bash
+git clone https://github.com/soggycactus/paprika-3-mcp
+cd paprika-3-mcp
+go install ./cmd/paprika-3-mcp/
+```
 
 ### 🍎 macOS (via Homebrew)
 
@@ -70,35 +91,50 @@ brew install paprika-3-mcp
 
 ### ✅ Test the installation
 
-You can verify the server is installed by checking:
-
 ```bash
 paprika-3-mcp --version
-```
-
-You should see:
-
-```bash
-paprika-3-mcp version v0.1.0
 ```
 
 ## 🤖 Setting up Claude
 
 If you haven't setup MCP before, [first read more about how to install Claude Desktop client & configure an MCP server.](https://modelcontextprotocol.io/quickstart/user)
 
-To add `paprika-3-mcp` to Claude, all you need to do is create another entry in the `mcpServers` section of your `claude_desktop_config.json` file:
+### Claude Code (recommended)
+
+The repo includes a `.mcp.json` that Claude Code picks up automatically. Set your credentials as environment variables and it just works:
 
 ```json
 {
   "mcpServers": {
-    "paprika-3": {
+    "paprika": {
       "command": "paprika-3-mcp",
       "args": [
-        "--username",
-        "<your paprika 3 username (usually email)>",
-        "--password",
-        "<your paprika 3 password>"
-      ]
+        "--refresh-interval", "5m",
+        "--aisle-map", "/path/to/aisles/woodmans_east.json",
+        "--grocery-list", ""
+      ],
+      "env": {
+        "PAPRIKA_USERNAME": "you@example.com",
+        "PAPRIKA_PASSWORD": "yourpassword"
+      }
+    }
+  }
+}
+```
+
+### Claude Desktop
+
+Add an entry to the `mcpServers` section of your `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "paprika": {
+      "command": "paprika-3-mcp",
+      "env": {
+        "PAPRIKA_USERNAME": "you@example.com",
+        "PAPRIKA_PASSWORD": "yourpassword"
+      }
     }
   }
 }
@@ -107,6 +143,17 @@ To add `paprika-3-mcp` to Claude, all you need to do is create another entry in 
 Restart Claude and you should see the MCP server tools after clicking on the hammerhead icon:
 
 ![MCP server running with Claude](docs/install.png)
+
+## ⚙️ Configuration flags
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--refresh-interval` | `5m` | How often to refresh the recipe resource cache |
+| `--aisle-map` | `aisles/woodmans_east.json` | Path to aisle map JSON file (used by `setup_woodmans_aisles`) |
+| `--grocery-list` | *(first list)* | Default grocery list name; empty string uses the first list |
+| `--version` | — | Print version and exit |
+
+Credentials are read from the `PAPRIKA_USERNAME` and `PAPRIKA_PASSWORD` environment variables.
 
 ## 📄 License
 
@@ -118,7 +165,7 @@ This project is open source under the [MIT License](./LICENSE) © 2025 [Lucas St
 
 ##### 📄 Where can I see the server logs?
 
-The MCP server writes structured logs using Go’s `slog` with rotation via `lumberjack`. Log files are automatically created based on your operating system:
+The MCP server writes structured logs using Go's `slog` with rotation via `lumberjack`. Log files are automatically created based on your operating system:
 
 | Operating System | Log File Path                             |
 | ---------------- | ----------------------------------------- |
