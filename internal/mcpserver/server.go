@@ -12,32 +12,46 @@ import (
 	"github.com/soggycactus/paprika-3-mcp/internal/paprika"
 )
 
-type NewServerOptions struct {
-	Version  string
-	Username string
-	Password string
-	Paprika  *paprika.Client
-	Logger   *slog.Logger
+type Options struct {
+	Version            string
+	Username           string
+	Password           string
+	RefreshInterval    time.Duration
+	AisleMapPath       string
+	DefaultGroceryList string
+	Logger             *slog.Logger
 }
 
-func NewServer(opts NewServerOptions) (*Server, error) {
+
+func NewServer(opts Options) (*Server, error) {
 	paprika3, err := paprika.NewClient(opts.Username, opts.Password, opts.Version, opts.Logger)
 	if err != nil {
 		return nil, err
 	}
 
+	refreshInterval := opts.RefreshInterval
+	if refreshInterval == 0 {
+		refreshInterval = 5 * time.Minute
+	}
+
 	s := server.NewMCPServer("paprika-3-mcp", opts.Version, server.WithResourceCapabilities(false, false))
 	return &Server{
-		paprika3: paprika3,
-		server:   s,
-		logger:   opts.Logger,
+		paprika3:           paprika3,
+		server:             s,
+		logger:             opts.Logger,
+		refreshInterval:    refreshInterval,
+		aisleMapPath:       opts.AisleMapPath,
+		defaultGroceryList: opts.DefaultGroceryList,
 	}, nil
 }
 
 type Server struct {
-	paprika3 *paprika.Client
-	logger   *slog.Logger
-	server   *server.MCPServer
+	paprika3           *paprika.Client
+	logger             *slog.Logger
+	server             *server.MCPServer
+	refreshInterval    time.Duration
+	aisleMapPath       string
+	defaultGroceryList string
 }
 
 func (s *Server) Start() {
@@ -84,7 +98,7 @@ func (s *Server) Start() {
 func (s *Server) updateResources() {
 	s.addResources()
 
-	ticker := time.NewTicker(1 * time.Minute)
+	ticker := time.NewTicker(s.refreshInterval)
 	for range ticker.C {
 		s.addResources()
 	}
