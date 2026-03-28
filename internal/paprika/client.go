@@ -489,17 +489,21 @@ func (c *Client) SaveRecipe(ctx context.Context, recipe Recipe) (*Recipe, error)
 }
 
 type GroceryItem struct {
-	UID        string `json:"uid"`
-	Name       string `json:"name"`
-	Ingredient string `json:"ingredient"`
-	Quantity   string `json:"quantity"`
-	Recipe     string `json:"recipe"`
-	RecipeUID  string `json:"recipe_uid"`
-	ListUID    string `json:"list_uid"`
-	Aisle      string `json:"aisle"`
-	Checked    bool   `json:"checked"`
-	OrderFlag  int    `json:"order_flag"`
+	UID         string  `json:"uid"`
+	Name        string  `json:"name"`
+	Ingredient  string  `json:"ingredient"`
+	Quantity    string  `json:"quantity"`
+	Recipe      *string `json:"recipe"`
+	RecipeUID   *string `json:"recipe_uid"`
+	ListUID     string  `json:"list_uid"`
+	Aisle       string  `json:"aisle"`
+	AisleUID    string  `json:"aisle_uid,omitempty"`
+	Instruction string  `json:"instruction"`
+	Separate    bool    `json:"separate"`
+	Purchased   bool    `json:"purchased"`
+	OrderFlag   int     `json:"order_flag"`
 }
+
 
 func (c *Client) ListGroceryItems(ctx context.Context) ([]GroceryItem, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
@@ -518,10 +522,69 @@ func (c *Client) ListGroceryItems(ctx context.Context) ([]GroceryItem, error) {
 		return nil, fmt.Errorf("paprika API error %d: %s", resp.StatusCode, b)
 	}
 
+	rawBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
 	var result struct {
 		Result []GroceryItem `json:"result"`
 	}
-	return result.Result, json.NewDecoder(resp.Body).Decode(&result)
+	return result.Result, json.Unmarshal(rawBytes, &result)
+}
+
+// SaveGroceryItem creates a new grocery item via the V1 sync endpoint.
+// It follows the same gzip+multipart+Basic Auth pattern as SaveMealPlanEntry and SavePantryItem.
+func (c *Client) SaveGroceryItem(ctx context.Context, item GroceryItem) error {
+	if item.UID == "" {
+		item.UID = strings.ToUpper(uuid.New().String())
+	}
+
+	data, err := json.Marshal([]GroceryItem{item})
+	if err != nil {
+		return err
+	}
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	if _, err := gz.Write(data); err != nil {
+		return err
+	}
+	if err := gz.Close(); err != nil {
+		return err
+	}
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	part, err := writer.CreateFormFile("data", "data")
+	if err != nil {
+		return err
+	}
+	if _, err := part.Write(buf.Bytes()); err != nil {
+		return err
+	}
+	if err := writer.Close(); err != nil {
+		return err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://paprikaapp.com/api/v1/sync/groceries/", body)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.SetBasicAuth(c.username, c.password)
+	req.ContentLength = int64(body.Len())
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		b, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("paprika API error %d: %s", resp.StatusCode, b)
+	}
+
+	return c.notify(ctx)
 }
 
 // UpdateGroceryItem saves aisle (and other mutable fields) back to Paprika.

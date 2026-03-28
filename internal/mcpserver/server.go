@@ -131,6 +131,7 @@ func (s *Server) Start() {
 		server.ServerTool{Tool: getPantryTool(), Handler: s.getPantry},
 		server.ServerTool{Tool: addPantryItemTool(), Handler: s.addPantryItem},
 		server.ServerTool{Tool: updatePantryItemTool(), Handler: s.updatePantryItem},
+		server.ServerTool{Tool: addGroceryItemTool(), Handler: s.addGroceryItem},
 	)
 
 	if err := server.ServeStdio(s.server); err != nil {
@@ -298,7 +299,7 @@ func (s *Server) getGroceryList(ctx context.Context, req mcp.CallToolRequest) (*
 			name = item.Ingredient
 		}
 		checked := " "
-		if item.Checked {
+		if item.Purchased {
 			checked = "x"
 		}
 		sb.WriteString(fmt.Sprintf("| %s | %s | [%s] |\n", name, item.Aisle, checked))
@@ -359,6 +360,74 @@ func (s *Server) updateGroceryItemAisle(ctx context.Context, req mcp.CallToolReq
 		msg += "\nErrors:\n- " + strings.Join(errs, "\n- ")
 	}
 	return mcp.NewToolResultText(msg), nil
+}
+
+func addGroceryItemTool() mcp.Tool {
+	return mcp.NewTool("add_grocery_item",
+		mcp.WithDescription("Add a new item to the Paprika grocery list."),
+		mcp.WithString("name", mcp.Description("Display name for the item"), mcp.Required()),
+		mcp.WithString("ingredient", mcp.Description("Ingredient name (used for matching/grouping)"), mcp.Required()),
+		mcp.WithString("quantity", mcp.Description("Quantity string, e.g. '2 lbs' or '1 can'"), mcp.DefaultString("")),
+		mcp.WithString("aisle", mcp.Description("Aisle label"), mcp.DefaultString("")),
+		mcp.WithString("recipe", mcp.Description("Recipe name this item is for"), mcp.DefaultString("")),
+		mcp.WithString("recipe_uid", mcp.Description("UID of the recipe this item is for"), mcp.DefaultString("")),
+	)
+}
+
+func (s *Server) addGroceryItem(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	name, _ := req.Params.Arguments["name"].(string)
+	ingredient, _ := req.Params.Arguments["ingredient"].(string)
+	quantity, _ := req.Params.Arguments["quantity"].(string)
+	aisle, _ := req.Params.Arguments["aisle"].(string)
+	recipe, _ := req.Params.Arguments["recipe"].(string)
+	recipeUID, _ := req.Params.Arguments["recipe_uid"].(string)
+
+	// Fetch existing items to copy list_uid and build aisle name → aisle_uid map.
+	existing, err := s.paprika3.ListGroceryItems(ctx)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to fetch grocery list: %v", err)), nil
+	}
+	var listUID string
+	aisleUIDs := make(map[string]string) // aisle name → aisle_uid
+	for _, it := range existing {
+		if listUID == "" {
+			listUID = it.ListUID
+		}
+		if it.Aisle != "" && it.AisleUID != "" {
+			aisleUIDs[it.Aisle] = it.AisleUID
+		}
+	}
+
+	// Auto-assign aisle from map if caller didn't provide one.
+	if aisle == "" {
+		aisle, _ = s.aisleMap.Lookup(ingredient)
+	}
+	aisleUID := aisleUIDs[aisle]
+
+	var recipePtr, recipeUIDPtr *string
+	if recipe != "" {
+		recipePtr = &recipe
+	}
+	if recipeUID != "" {
+		recipeUIDPtr = &recipeUID
+	}
+
+	item := paprika.GroceryItem{
+		Name:       name,
+		Ingredient: ingredient,
+		Quantity:   quantity,
+		Aisle:      aisle,
+		AisleUID:   aisleUID,
+		Recipe:     recipePtr,
+		RecipeUID:  recipeUIDPtr,
+		ListUID:    listUID,
+	}
+
+	if err := s.paprika3.SaveGroceryItem(ctx, item); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	return mcp.NewToolResultText(fmt.Sprintf("Added '%s' to grocery list.", name)), nil
 }
 
 func setupWoodmansAislesTool() mcp.Tool {
