@@ -68,6 +68,12 @@ func (s *Server) Start() {
 		mcp.WithString("prep_time", mcp.Description("The prep time for the recipe"), mcp.DefaultString("")),
 		mcp.WithString("cook_time", mcp.Description("The cook time for the recipe"), mcp.DefaultString("")),
 		mcp.WithString("difficulty", mcp.Description("The difficulty of the recipe"), mcp.DefaultString("")),
+		mcp.WithArray("categories",
+			mcp.Description("List of category names to assign (e.g. [\"Holy Quad\", \"Protein: Chicken\", \"Cuisine: Mexican\"])"),
+		),
+		mcp.WithNumber("rating",
+			mcp.Description("Star rating 0-5 (0 = unrated)"),
+		),
 	)
 	updateRecipeTool := mcp.NewTool("update_paprika_recipe",
 		mcp.WithDescription("Update existing recipes in the Paprika 3 app"),
@@ -81,6 +87,12 @@ func (s *Server) Start() {
 		mcp.WithString("prep_time", mcp.Description("The prep time for the recipe"), mcp.Required()),
 		mcp.WithString("cook_time", mcp.Description("The cook time for the recipe"), mcp.Required()),
 		mcp.WithString("difficulty", mcp.Description("The difficulty of the recipe"), mcp.Required()),
+		mcp.WithArray("categories",
+			mcp.Description("List of category names to assign (e.g. [\"Holy Quad\", \"Protein: Chicken\", \"Cuisine: Mexican\"])"),
+		),
+		mcp.WithNumber("rating",
+			mcp.Description("Star rating 0-5 (0 = unrated)"),
+		),
 	)
 	s.server.AddTools(server.ServerTool{
 		Tool:    createRecipeTool,
@@ -199,6 +211,14 @@ func (s *Server) createRecipe(ctx context.Context, req mcp.CallToolRequest) (*mc
 	notes := req.Params.Arguments["notes"].(string)
 	difficulty := req.Params.Arguments["difficulty"].(string)
 
+	categories, _ := req.Params.Arguments["categories"].([]interface{})
+	rating, _ := req.Params.Arguments["rating"].(float64)
+
+	cats := make([]string, len(categories))
+	for i, c := range categories {
+		cats[i], _ = c.(string)
+	}
+
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	recipe, err := s.paprika3.SaveRecipe(ctx, paprika.Recipe{
@@ -211,6 +231,8 @@ func (s *Server) createRecipe(ctx context.Context, req mcp.CallToolRequest) (*mc
 		CookTime:    cookTime,
 		Notes:       notes,
 		Difficulty:  difficulty,
+		Categories:  cats,
+		Rating:      int(rating),
 	})
 	if err != nil {
 		return nil, err
@@ -271,7 +293,8 @@ func (s *Server) updateRecipe(ctx context.Context, req mcp.CallToolRequest) (*mc
 
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	recipe, err := s.paprika3.SaveRecipe(ctx, paprika.Recipe{
+
+	recipe := paprika.Recipe{
 		UID:         uid,
 		Name:        name,
 		Ingredients: ingredients,
@@ -282,17 +305,33 @@ func (s *Server) updateRecipe(ctx context.Context, req mcp.CallToolRequest) (*mc
 		CookTime:    cookTime,
 		Notes:       notes,
 		Difficulty:  difficulty,
-	})
+	}
+
+	if rawCats, ok := req.Params.Arguments["categories"]; ok && rawCats != nil {
+		categories, _ := rawCats.([]interface{})
+		cats := make([]string, len(categories))
+		for i, c := range categories {
+			cats[i], _ = c.(string)
+		}
+		recipe.Categories = cats
+	}
+
+	if rawRating, ok := req.Params.Arguments["rating"]; ok && rawRating != nil {
+		rating, _ := rawRating.(float64)
+		recipe.Rating = int(rating)
+	}
+
+	savedRecipe, err := s.paprika3.SaveRecipe(ctx, recipe)
 	if err != nil {
 		return nil, err
 	}
 
 	duration := time.Since(start)
-	s.logger.Info("Updated recipe", "name", recipe.Name, "uid", recipe.UID, "duration", duration)
+	s.logger.Info("Updated recipe", "name", savedRecipe.Name, "uid", savedRecipe.UID, "duration", duration)
 
-	return mcp.NewToolResultResource(recipe.Name, mcp.TextResourceContents{
-		URI:      fmt.Sprintf("paprika://recipes/%s", recipe.UID),
+	return mcp.NewToolResultResource(savedRecipe.Name, mcp.TextResourceContents{
+		URI:      fmt.Sprintf("paprika://recipes/%s", savedRecipe.UID),
 		MIMEType: "text/markdown",
-		Text:     recipe.ToMarkdown(),
+		Text:     savedRecipe.ToMarkdown(),
 	}), nil
 }
