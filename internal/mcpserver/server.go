@@ -400,6 +400,7 @@ func (s *Server) setupWoodmansAisles(ctx context.Context, req mcp.CallToolReques
 
 	if len(proposals) > 0 {
 		sb.WriteString("### Changes\n\n| Item | Current Aisle | → New Aisle |\n|---|---|---|\n")
+		var applyErrs []string
 		for _, p := range proposals {
 			displayName := p.item.Name
 			if displayName == "" {
@@ -409,8 +410,14 @@ func (s *Server) setupWoodmansAisles(ctx context.Context, req mcp.CallToolReques
 			if !dryRun {
 				p.item.Aisle = p.newAisle
 				if err := s.paprika3.UpdateGroceryItem(ctx, p.item); err != nil {
-					sb.WriteString(fmt.Sprintf("  ⚠️ error updating %s: %v\n", displayName, err))
+					applyErrs = append(applyErrs, fmt.Sprintf("%s: %v", displayName, err))
 				}
+			}
+		}
+		if len(applyErrs) > 0 {
+			sb.WriteString("\n### Errors\n\n")
+			for _, e := range applyErrs {
+				sb.WriteString(fmt.Sprintf("- ⚠️ %s\n", e))
 			}
 		}
 	} else {
