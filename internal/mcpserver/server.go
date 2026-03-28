@@ -551,6 +551,9 @@ func (s *Server) getMealPlan(ctx context.Context, req mcp.CallToolRequest) (*mcp
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("invalid end_date: %v", err)), nil
 	}
+	if end.Before(start) {
+		return mcp.NewToolResultError("end_date must not be before start_date"), nil
+	}
 
 	entries, err := s.paprika3.ListMealPlanEntries(ctx, start, end)
 	if err != nil {
@@ -593,6 +596,9 @@ func addMealToPlanTool() mcp.Tool {
 
 func (s *Server) addMealToPlan(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	recipeUID, _ := req.Params.Arguments["recipe_uid"].(string)
+	if recipeUID == "" {
+		return mcp.NewToolResultError("recipe_uid is required"), nil
+	}
 	dateStr, _ := req.Params.Arguments["date"].(string)
 	mealTypeStr, _ := req.Params.Arguments["meal_type"].(string)
 
