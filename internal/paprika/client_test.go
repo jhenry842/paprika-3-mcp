@@ -78,6 +78,9 @@ func TestMealPlanClient(t *testing.T) {
 func TestClient(t *testing.T) {
 	username := os.Getenv("PAPRIKA_USERNAME")
 	password := os.Getenv("PAPRIKA_PASSWORD")
+	if username == "" || password == "" {
+		t.Skip("PAPRIKA_USERNAME and PAPRIKA_PASSWORD not set")
+	}
 	client, err := paprika.NewClient(username, password, "dev", nil)
 	require.NoError(t, err)
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
