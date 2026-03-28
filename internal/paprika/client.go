@@ -83,14 +83,18 @@ func NewClient(username, password, version string, logger *slog.Logger) (*Client
 	}
 
 	return &Client{
-		client: client,
-		logger: l,
+		client:   client,
+		logger:   l,
+		username: username,
+		password: password,
 	}, nil
 }
 
 type Client struct {
-	client *http.Client
-	logger *slog.Logger
+	client   *http.Client
+	logger   *slog.Logger
+	username string
+	password string
 }
 
 type loginResponse struct {
@@ -587,10 +591,11 @@ type MealPlanEntry struct {
 	UID        string `json:"uid"`
 	RecipeUID  string `json:"recipe_uid"`
 	RecipeName string `json:"name"`
-	Date       string `json:"date"`      // "YYYY-MM-DD"
-	MealType   int    `json:"meal_type"` // 0-3
+	Date       string `json:"date"`       // "YYYY-MM-DD"
+	MealType   int    `json:"type"`       // 0-3; Paprika uses "type" not "meal_type"
 	OrderFlag  int    `json:"order_flag"`
 	Note       string `json:"note"`
+	Deleted    bool   `json:"deleted"`
 }
 
 func (c *Client) ListMealPlanEntries(ctx context.Context, start, end time.Time) ([]MealPlanEntry, error) {
@@ -635,8 +640,10 @@ func (c *Client) SaveMealPlanEntry(ctx context.Context, entry MealPlanEntry) err
 	if entry.UID == "" {
 		entry.UID = strings.ToUpper(uuid.New().String())
 	}
+	entry.Deleted = false
 
-	data, err := json.Marshal(entry)
+	// V1 API requires a JSON array, not a single object.
+	data, err := json.Marshal([]MealPlanEntry{entry})
 	if err != nil {
 		return err
 	}
@@ -663,12 +670,14 @@ func (c *Client) SaveMealPlanEntry(ctx context.Context, entry MealPlanEntry) err
 		return err
 	}
 
-	url := fmt.Sprintf("https://paprikaapp.com/api/v2/sync/meal/%s/", entry.UID)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, body)
+	// V1 API: plural endpoint, no UID in URL, Basic Auth.
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://paprikaapp.com/api/v1/sync/meals/", body)
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.SetBasicAuth(c.username, c.password)
+	req.ContentLength = int64(body.Len())
 
 	resp, err := c.client.Do(req)
 	if err != nil {

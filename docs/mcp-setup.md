@@ -3,22 +3,24 @@
 ## Build
 
 ```bash
-cd /home/john-henry-erikson/code/cooking
-go build -o bin/paprika-3-mcp ./cmd/paprika-3-mcp/
+cd /home/john-henry-erikson/code/paprika-3-mcp
+go install ./cmd/paprika-3-mcp/
 ```
 
 ## Configure Claude Code
 
-Add to `~/.claude/settings.json` under `mcpServers`:
+The repo includes a `.mcp.json` that Claude Code loads automatically. No manual settings needed — just make sure the binary is installed to `$GOPATH/bin`.
+
+If you need to add it manually to `~/.claude/settings.json`:
 
 ```json
 {
   "mcpServers": {
-    "paprika-3": {
-      "command": "/home/john-henry-erikson/code/cooking/bin/paprika-3-mcp",
+    "paprika": {
+      "command": "/home/john-henry-erikson/gopath/bin/paprika-3-mcp",
       "args": [
         "--refresh-interval", "5m",
-        "--aisle-map", "/home/john-henry-erikson/code/cooking/aisles/woodmans_east.json",
+        "--aisle-map", "/home/john-henry-erikson/code/paprika-3-mcp/aisles/woodmans_east.json",
         "--grocery-list", ""
       ],
       "env": {
@@ -30,8 +32,6 @@ Add to `~/.claude/settings.json` under `mcpServers`:
   }
 }
 ```
-
-> **Path note:** The `command` and `--aisle-map` paths above are hardcoded to `/home/john-henry-erikson/code/cooking`. Update them if the repo is ever moved or cloned to a different location.
 
 ## Secure the config file
 
