@@ -550,7 +550,9 @@ func (c *Client) UpdateGroceryItem(ctx context.Context, item GroceryItem) error 
 	if _, err := part.Write(buf.Bytes()); err != nil {
 		return err
 	}
-	writer.Close()
+	if err := writer.Close(); err != nil {
+		return err
+	}
 
 	url := fmt.Sprintf("https://paprikaapp.com/api/v2/sync/grocery/%s/", item.UID)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, body)
@@ -657,7 +659,9 @@ func (c *Client) SaveMealPlanEntry(ctx context.Context, entry MealPlanEntry) err
 	if _, err := part.Write(buf.Bytes()); err != nil {
 		return err
 	}
-	writer.Close()
+	if err := writer.Close(); err != nil {
+		return err
+	}
 
 	url := fmt.Sprintf("https://paprikaapp.com/api/v2/sync/meal/%s/", entry.UID)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, body)

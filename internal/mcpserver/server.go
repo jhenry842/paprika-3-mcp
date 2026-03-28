@@ -219,12 +219,12 @@ func (s *Server) createRecipe(ctx context.Context, req mcp.CallToolRequest) (*mc
 	if !ok || len(directions) == 0 {
 		return nil, errors.New("directions are required")
 	}
-	servings := req.Params.Arguments["servings"].(string)
-	prepTime := req.Params.Arguments["prep_time"].(string)
-	cookTime := req.Params.Arguments["cook_time"].(string)
-	description := req.Params.Arguments["description"].(string)
-	notes := req.Params.Arguments["notes"].(string)
-	difficulty := req.Params.Arguments["difficulty"].(string)
+	servings, _ := req.Params.Arguments["servings"].(string)
+	prepTime, _ := req.Params.Arguments["prep_time"].(string)
+	cookTime, _ := req.Params.Arguments["cook_time"].(string)
+	description, _ := req.Params.Arguments["description"].(string)
+	notes, _ := req.Params.Arguments["notes"].(string)
+	difficulty, _ := req.Params.Arguments["difficulty"].(string)
 
 	categories, _ := req.Params.Arguments["categories"].([]interface{})
 	rating, _ := req.Params.Arguments["rating"].(float64)
@@ -267,7 +267,7 @@ func getGroceryListTool() mcp.Tool {
 	return mcp.NewTool("get_grocery_list",
 		mcp.WithDescription("Fetch all items in a Paprika grocery list with their current aisle assignments."),
 		mcp.WithString("list_name",
-			mcp.Description("Name of the grocery list. Omit to use the default list."),
+			mcp.Description("Name of the grocery list (not yet implemented — all items are returned regardless of this value)."),
 		),
 	)
 }
