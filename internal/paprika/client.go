@@ -537,7 +537,9 @@ func (c *Client) UpdateGroceryItem(ctx context.Context, item GroceryItem) error 
 	if _, err := gz.Write(data); err != nil {
 		return err
 	}
-	gz.Close()
+	if err := gz.Close(); err != nil {
+		return err
+	}
 
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
