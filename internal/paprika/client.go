@@ -573,6 +573,113 @@ func (c *Client) UpdateGroceryItem(ctx context.Context, item GroceryItem) error 
 	return c.notify(ctx)
 }
 
+// MealType constants match Paprika's internal representation.
+const (
+	MealTypeBreakfast = 0
+	MealTypeLunch     = 1
+	MealTypeDinner    = 2
+	MealTypeSnack     = 3
+)
+
+type MealPlanEntry struct {
+	UID        string `json:"uid"`
+	RecipeUID  string `json:"recipe_uid"`
+	RecipeName string `json:"name"`
+	Date       string `json:"date"`      // "YYYY-MM-DD"
+	MealType   int    `json:"meal_type"` // 0-3
+	OrderFlag  int    `json:"order_flag"`
+	Note       string `json:"note"`
+}
+
+func (c *Client) ListMealPlanEntries(ctx context.Context, start, end time.Time) ([]MealPlanEntry, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		"https://paprikaapp.com/api/v2/sync/meals/", nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		b, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("paprika API error %d: %s", resp.StatusCode, b)
+	}
+
+	var result struct {
+		Result []MealPlanEntry `json:"result"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+
+	// Filter to the requested date range
+	var filtered []MealPlanEntry
+	for _, entry := range result.Result {
+		t, err := time.Parse("2006-01-02", entry.Date)
+		if err != nil {
+			continue
+		}
+		if !t.Before(start.Truncate(24*time.Hour)) && !t.After(end.Truncate(24*time.Hour)) {
+			filtered = append(filtered, entry)
+		}
+	}
+	return filtered, nil
+}
+
+func (c *Client) SaveMealPlanEntry(ctx context.Context, entry MealPlanEntry) error {
+	if entry.UID == "" {
+		entry.UID = strings.ToUpper(uuid.New().String())
+	}
+
+	data, err := json.Marshal(entry)
+	if err != nil {
+		return err
+	}
+
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	if _, err := gz.Write(data); err != nil {
+		return err
+	}
+	if err := gz.Close(); err != nil {
+		return err
+	}
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	part, err := writer.CreateFormFile("data", "data")
+	if err != nil {
+		return err
+	}
+	if _, err := part.Write(buf.Bytes()); err != nil {
+		return err
+	}
+	writer.Close()
+
+	url := fmt.Sprintf("https://paprikaapp.com/api/v2/sync/meal/%s/", entry.UID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, body)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		b, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("paprika API error %d: %s", resp.StatusCode, b)
+	}
+
+	return c.notify(ctx)
+}
+
 // notify sends a POST to /v2/sync/notify, which tells all Paprika clients to sync.
 // We usually defer this call after a recipe is created/updated/deleted, since we don't care whether it suceeds or not.
 func (c *Client) notify(ctx context.Context) error {

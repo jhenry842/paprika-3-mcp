@@ -56,6 +56,25 @@ func TestGroceryClient(t *testing.T) {
 	}
 }
 
+func TestMealPlanClient(t *testing.T) {
+	username := os.Getenv("PAPRIKA_USERNAME")
+	password := os.Getenv("PAPRIKA_PASSWORD")
+	if username == "" || password == "" {
+		t.Skip("PAPRIKA_USERNAME and PAPRIKA_PASSWORD not set")
+	}
+
+	client, err := paprika.NewClient(username, password, "dev", nil)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	start := time.Now()
+	end := start.Add(7 * 24 * time.Hour)
+
+	entries, err := client.ListMealPlanEntries(ctx, start, end)
+	require.NoError(t, err)
+	assert.NotNil(t, entries)
+}
+
 func TestClient(t *testing.T) {
 	username := os.Getenv("PAPRIKA_USERNAME")
 	password := os.Getenv("PAPRIKA_PASSWORD")
