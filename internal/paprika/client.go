@@ -684,6 +684,39 @@ func (c *Client) SaveMealPlanEntry(ctx context.Context, entry MealPlanEntry) err
 	return c.notify(ctx)
 }
 
+type PantryItem struct {
+	UID        string `json:"uid"`
+	Name       string `json:"name"`
+	Ingredient string `json:"ingredient"`
+	Quantity   string `json:"quantity"`
+	Aisle      string `json:"aisle"`
+	InStock    bool   `json:"in_stock"`
+	PurchaseBy string `json:"purchase_by"`
+}
+
+func (c *Client) ListPantryItems(ctx context.Context) ([]PantryItem, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		"https://paprikaapp.com/api/v2/sync/pantry/", nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		b, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("paprika API error %d: %s", resp.StatusCode, b)
+	}
+
+	var result struct {
+		Result []PantryItem `json:"result"`
+	}
+	return result.Result, json.NewDecoder(resp.Body).Decode(&result)
+}
+
 // notify sends a POST to /v2/sync/notify, which tells all Paprika clients to sync.
 // We usually defer this call after a recipe is created/updated/deleted, since we don't care whether it suceeds or not.
 func (c *Client) notify(ctx context.Context) error {
