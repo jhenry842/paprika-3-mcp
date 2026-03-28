@@ -484,6 +484,93 @@ func (c *Client) SaveRecipe(ctx context.Context, recipe Recipe) (*Recipe, error)
 	return &recipe, nil
 }
 
+type GroceryItem struct {
+	UID        string `json:"uid"`
+	Name       string `json:"name"`
+	Ingredient string `json:"ingredient"`
+	Quantity   string `json:"quantity"`
+	Recipe     string `json:"recipe"`
+	RecipeUID  string `json:"recipe_uid"`
+	ListUID    string `json:"list_uid"`
+	Aisle      string `json:"aisle"`
+	Checked    bool   `json:"checked"`
+	OrderFlag  int    `json:"order_flag"`
+}
+
+func (c *Client) ListGroceryItems(ctx context.Context) ([]GroceryItem, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		"https://paprikaapp.com/api/v2/sync/groceries/", nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		b, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("paprika API error %d: %s", resp.StatusCode, b)
+	}
+
+	var result struct {
+		Result []GroceryItem `json:"result"`
+	}
+	return result.Result, json.NewDecoder(resp.Body).Decode(&result)
+}
+
+// UpdateGroceryItem saves aisle (and other mutable fields) back to Paprika.
+// It follows the same gzip+multipart pattern as SaveRecipe.
+func (c *Client) UpdateGroceryItem(ctx context.Context, item GroceryItem) error {
+	if item.UID == "" {
+		item.UID = strings.ToUpper(uuid.New().String())
+	}
+
+	data, err := json.Marshal(item)
+	if err != nil {
+		return err
+	}
+
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	if _, err := gz.Write(data); err != nil {
+		return err
+	}
+	gz.Close()
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	part, err := writer.CreateFormFile("data", "data")
+	if err != nil {
+		return err
+	}
+	if _, err := part.Write(buf.Bytes()); err != nil {
+		return err
+	}
+	writer.Close()
+
+	url := fmt.Sprintf("https://paprikaapp.com/api/v2/sync/grocery/%s/", item.UID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, body)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		b, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("paprika API error %d: %s", resp.StatusCode, b)
+	}
+
+	return c.notify(ctx)
+}
+
 // notify sends a POST to /v2/sync/notify, which tells all Paprika clients to sync.
 // We usually defer this call after a recipe is created/updated/deleted, since we don't care whether it suceeds or not.
 func (c *Client) notify(ctx context.Context) error {

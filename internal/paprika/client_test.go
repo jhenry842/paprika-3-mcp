@@ -13,6 +13,49 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestGroceryClient(t *testing.T) {
+	username := os.Getenv("PAPRIKA_USERNAME")
+	password := os.Getenv("PAPRIKA_PASSWORD")
+	if username == "" || password == "" {
+		t.Skip("PAPRIKA_USERNAME and PAPRIKA_PASSWORD not set")
+	}
+
+	client, err := paprika.NewClient(username, password, "dev", nil)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+
+	// List grocery items
+	items, err := client.ListGroceryItems(ctx)
+	require.NoError(t, err)
+	// Just verify no error — list may be empty
+	assert.NotNil(t, items)
+
+	// If there are items, update the aisle on the first one and verify it round-trips.
+	if len(items) > 0 {
+		original := items[0]
+		modified := original
+		modified.Aisle = "Test Aisle"
+		require.NoError(t, client.UpdateGroceryItem(ctx, modified))
+
+		// Re-fetch and verify
+		updated, err := client.ListGroceryItems(ctx)
+		require.NoError(t, err)
+		var found bool
+		for _, item := range updated {
+			if item.UID == original.UID {
+				assert.Equal(t, "Test Aisle", item.Aisle)
+				found = true
+				break
+			}
+		}
+		assert.True(t, found, "updated item not found in re-fetch")
+
+		// Restore original aisle
+		require.NoError(t, client.UpdateGroceryItem(ctx, original))
+	}
+}
+
 func TestClient(t *testing.T) {
 	username := os.Getenv("PAPRIKA_USERNAME")
 	password := os.Getenv("PAPRIKA_PASSWORD")
