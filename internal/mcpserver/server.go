@@ -129,6 +129,8 @@ func (s *Server) Start() {
 		server.ServerTool{Tool: listRecipesTool(), Handler: s.listRecipes},
 		server.ServerTool{Tool: getRecipeTool(), Handler: s.getRecipe},
 		server.ServerTool{Tool: getPantryTool(), Handler: s.getPantry},
+		server.ServerTool{Tool: addPantryItemTool(), Handler: s.addPantryItem},
+		server.ServerTool{Tool: updatePantryItemTool(), Handler: s.updatePantryItem},
 	)
 
 	if err := server.ServeStdio(s.server); err != nil {
@@ -751,15 +753,93 @@ func (s *Server) getPantry(ctx context.Context, _ mcp.CallToolRequest) (*mcp.Cal
 	sb.WriteString(fmt.Sprintf("## Pantry (%d items)\n\n", len(items)))
 	sb.WriteString("| Item | Quantity | In Stock |\n|---|---|---|\n")
 	for _, item := range items {
-		name := item.Name
-		if name == "" {
-			name = item.Ingredient
-		}
 		inStock := "no"
 		if item.InStock {
 			inStock = "yes"
 		}
-		sb.WriteString(fmt.Sprintf("| %s | %s | %s |\n", name, item.Quantity, inStock))
+		sb.WriteString(fmt.Sprintf("| %s | %s | %s |\n", item.Ingredient, item.Quantity, inStock))
 	}
 	return mcp.NewToolResultText(sb.String()), nil
+}
+
+func addPantryItemTool() mcp.Tool {
+	return mcp.NewTool("add_pantry_item",
+		mcp.WithDescription("Add a new item to the Paprika pantry."),
+		mcp.WithString("ingredient", mcp.Description("Name of the ingredient."), mcp.Required()),
+		mcp.WithString("quantity", mcp.Description("Quantity string, e.g. '2 lbs', '1 dozen'."), mcp.Required()),
+		mcp.WithBoolean("in_stock", mcp.Description("Whether the item is currently in stock. Defaults to true.")),
+	)
+}
+
+func (s *Server) addPantryItem(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	ingredient, _ := req.Params.Arguments["ingredient"].(string)
+	if ingredient == "" {
+		return mcp.NewToolResultError("ingredient is required"), nil
+	}
+	quantity, _ := req.Params.Arguments["quantity"].(string)
+	if quantity == "" {
+		return mcp.NewToolResultError("quantity is required"), nil
+	}
+	inStock := true
+	if v, ok := req.Params.Arguments["in_stock"].(bool); ok {
+		inStock = v
+	}
+
+	item := paprika.PantryItem{
+		Ingredient: ingredient,
+		Quantity:   quantity,
+		InStock:    inStock,
+	}
+	if err := s.paprika3.SavePantryItem(ctx, item); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	return mcp.NewToolResultText(fmt.Sprintf("Added %s (%s) to pantry.", ingredient, quantity)), nil
+}
+
+func updatePantryItemTool() mcp.Tool {
+	return mcp.NewTool("update_pantry_item",
+		mcp.WithDescription("Update an existing pantry item's quantity or in-stock status. Use get_pantry to find the item's name first."),
+		mcp.WithString("ingredient", mcp.Description("Ingredient name exactly as shown in get_pantry."), mcp.Required()),
+		mcp.WithString("quantity", mcp.Description("New quantity string, e.g. '5 lbs'.")),
+		mcp.WithBoolean("in_stock", mcp.Description("Whether the item is currently in stock.")),
+	)
+}
+
+func (s *Server) updatePantryItem(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	ingredient, _ := req.Params.Arguments["ingredient"].(string)
+	if ingredient == "" {
+		return mcp.NewToolResultError("ingredient is required"), nil
+	}
+
+	items, err := s.paprika3.ListPantryItems(ctx)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	var target *paprika.PantryItem
+	for i := range items {
+		if strings.EqualFold(items[i].Ingredient, ingredient) {
+			target = &items[i]
+			break
+		}
+	}
+	if target == nil {
+		return mcp.NewToolResultError(fmt.Sprintf("no pantry item found with ingredient %q", ingredient)), nil
+	}
+
+	if q, ok := req.Params.Arguments["quantity"].(string); ok && q != "" {
+		target.Quantity = q
+	}
+	if v, ok := req.Params.Arguments["in_stock"].(bool); ok {
+		target.InStock = v
+	}
+
+	if err := s.paprika3.SavePantryItem(ctx, *target); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	inStock := "in stock"
+	if !target.InStock {
+		inStock = "out of stock"
+	}
+	return mcp.NewToolResultText(fmt.Sprintf("Updated %s: %s, %s.", target.Ingredient, target.Quantity, inStock)), nil
 }

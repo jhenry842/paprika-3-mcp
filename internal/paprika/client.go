@@ -698,13 +698,16 @@ func (c *Client) SaveMealPlanEntry(ctx context.Context, entry MealPlanEntry) err
 }
 
 type PantryItem struct {
-	UID        string `json:"uid"`
-	Name       string `json:"name"`
-	Ingredient string `json:"ingredient"`
-	Quantity   string `json:"quantity"`
-	Aisle      string `json:"aisle"`
-	InStock    bool   `json:"in_stock"`
-	PurchaseBy string `json:"purchase_by"`
+	UID           string  `json:"uid"`
+	Ingredient    string  `json:"ingredient"`
+	Quantity      string  `json:"quantity"`
+	Aisle         string  `json:"aisle"`
+	InStock       bool    `json:"in_stock"`
+	PurchaseDate  string  `json:"purchase_date"`
+	ExpirationDate *string `json:"expiration_date"`
+	HasExpiration bool    `json:"has_expiration"`
+	Notes         *string `json:"notes"`
+	Deleted       bool    `json:"deleted"`
 }
 
 func (c *Client) ListPantryItems(ctx context.Context) ([]PantryItem, error) {
@@ -728,6 +731,64 @@ func (c *Client) ListPantryItems(ctx context.Context) ([]PantryItem, error) {
 		Result []PantryItem `json:"result"`
 	}
 	return result.Result, json.NewDecoder(resp.Body).Decode(&result)
+}
+
+func (c *Client) SavePantryItem(ctx context.Context, item PantryItem) error {
+	if item.UID == "" {
+		item.UID = strings.ToUpper(uuid.New().String())
+	}
+	if item.PurchaseDate == "" {
+		item.PurchaseDate = time.Now().UTC().Format("2006-01-02 15:04:05")
+	}
+	item.Deleted = false
+
+	data, err := json.Marshal([]PantryItem{item})
+	if err != nil {
+		return err
+	}
+
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	if _, err := gz.Write(data); err != nil {
+		return err
+	}
+	if err := gz.Close(); err != nil {
+		return err
+	}
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	part, err := writer.CreateFormFile("data", "data")
+	if err != nil {
+		return err
+	}
+	if _, err := part.Write(buf.Bytes()); err != nil {
+		return err
+	}
+	if err := writer.Close(); err != nil {
+		return err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://paprikaapp.com/api/v1/sync/pantry/", body)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.SetBasicAuth(c.username, c.password)
+	req.ContentLength = int64(body.Len())
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		b, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("paprika API error %d: %s", resp.StatusCode, b)
+	}
+
+	return c.notify(ctx)
 }
 
 // notify sends a POST to /v2/sync/notify, which tells all Paprika clients to sync.
