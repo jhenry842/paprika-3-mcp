@@ -591,7 +591,7 @@ type MealPlanEntry struct {
 	UID        string `json:"uid"`
 	RecipeUID  string `json:"recipe_uid"`
 	RecipeName string `json:"name"`
-	Date       string `json:"date"`       // "YYYY-MM-DD"
+	Date       string `json:"date"`       // "YYYY-MM-DD 00:00:00" (Paprika's format)
 	MealType   int    `json:"type"`       // 0-3; Paprika uses "type" not "meal_type"
 	OrderFlag  int    `json:"order_flag"`
 	Note       string `json:"note"`
@@ -625,9 +625,13 @@ func (c *Client) ListMealPlanEntries(ctx context.Context, start, end time.Time) 
 	// Filter to the requested date range
 	var filtered []MealPlanEntry
 	for _, entry := range result.Result {
-		t, err := time.Parse("2006-01-02", entry.Date)
+		t, err := time.Parse("2006-01-02 15:04:05", entry.Date)
 		if err != nil {
-			continue
+			// Fallback for bare date format.
+			t, err = time.Parse("2006-01-02", entry.Date)
+			if err != nil {
+				continue
+			}
 		}
 		if !t.Before(start.Truncate(24*time.Hour)) && !t.After(end.Truncate(24*time.Hour)) {
 			filtered = append(filtered, entry)

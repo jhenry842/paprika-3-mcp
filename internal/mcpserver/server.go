@@ -578,7 +578,11 @@ func (s *Server) getMealPlan(ctx context.Context, req mcp.CallToolRequest) (*mcp
 	} else {
 		sb.WriteString("| Date | Meal | Recipe |\n|---|---|---|\n")
 		for _, e := range entries {
-			sb.WriteString(fmt.Sprintf("| %s | %s | %s |\n", e.Date, mealTypeName[e.MealType], e.RecipeName))
+				displayDate := e.Date
+			if len(displayDate) > 10 {
+				displayDate = displayDate[:10]
+			}
+			sb.WriteString(fmt.Sprintf("| %s | %s | %s |\n", displayDate, mealTypeName[e.MealType], e.RecipeName))
 		}
 	}
 
@@ -647,7 +651,7 @@ func (s *Server) addMealToPlan(ctx context.Context, req mcp.CallToolRequest) (*m
 	entry := paprika.MealPlanEntry{
 		RecipeUID:  recipeUID,
 		RecipeName: recipeUID, // fallback: use UID as name; Paprika will resolve the display name
-		Date:       dateStr,
+		Date:       dateStr + " 00:00:00", // Paprika requires "YYYY-MM-DD 00:00:00" format
 		MealType:   mealType,
 	}
 
