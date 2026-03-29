@@ -7,6 +7,17 @@ description: Use this skill when the user is done shopping and wants to sync the
 
 Post-shopping workflow: confirm what was purchased, sync all checked items to the pantry, uncheck staples so they stay ready for next week, delete non-staples, and prompt for next steps.
 
+## Step 0: Confirm This Is a Mid-Cycle Top-Up
+
+Before doing anything, ask:
+
+> "Was this a mid-week top-up run, or are you wrapping up the cooking cycle for the week?"
+
+- **Mid-week top-up** (ran out of something, quick extra trip) → continue with this skill.
+- **Wrapping up the cycle** (done cooking for the week, ready to plan next week) → stop and say: "Use `close-cycle` instead — it handles pantry depletion from cooked meals and advances the sync date. Just say 'close the cycle'."
+
+Do not proceed until the user confirms this is a top-up.
+
 ## Step 1: Preview What Will Be Synced
 
 Call `get_grocery_list`. Separate items into:
