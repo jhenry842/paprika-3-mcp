@@ -2,10 +2,10 @@
   {
     "id": "substitute-venison",
     "type": "substitution",
-    "description": "Always substitute venison with ground beef when shopping. The household does not cook venison.",
+    "description": "Substitute ground beef with venison when shopping. The household uses venison instead of ground beef.",
     "params": {
-      "from": "venison",
-      "to": "ground beef"
+      "from": "ground beef",
+      "to": "venison"
     }
   },
   {
@@ -15,6 +15,15 @@
     "params": {
       "category": "protein",
       "multiplier": 2
+    }
+  },
+  {
+    "id": "substitute-venison-roast",
+    "type": "substitution",
+    "description": "Substitute pork shoulder (pulled pork) with venison roast when shopping. The household uses venison roast instead of pork shoulder.",
+    "params": {
+      "from": "pork shoulder",
+      "to": "venison roast"
     }
   }
 ]

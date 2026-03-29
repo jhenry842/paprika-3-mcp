@@ -92,7 +92,7 @@ DeleteGroceryItem verified working via integration test (commit f2d63b6).
 
 ---
 
-## 11. Weekly planning workflow — NEXT
+## 11. Weekly planning workflow — DONE ✅ (2026-03-28)
 
 **Goal:** A single "plan the week" skill that walks the full loop: pantry review → meal planning → grocery list generation.
 
@@ -135,6 +135,75 @@ DeleteGroceryItem verified working via integration test (commit f2d63b6).
 
 ---
 
+## 14. Pantry depletion tracking
+
+**Goal:** Track ingredient consumption when meals are cooked so the pantry doesn't drift out of sync with reality.
+
+**Problem:** The pantry only ever gains items (via `sync_grocery_list_to_pantry`). Nothing marks ingredients as used when you cook. After a few weeks, pantry shows everything as in-stock and the grocery generator skips things you actually need.
+
+**Options:**
+- Lightweight conversational check at plan-the-week time: "anything you've run out of since last week?" → update those items
+- "Meal cooked" step: given a recipe, mark its ingredients as consumed (set `in_stock: no`)
+- Could be a skill wrapping `update_pantry_item`, not necessarily a new MCP tool
+
+**Why this matters:** Pantry accuracy is load-bearing for the whole grocery generation workflow. This is the most important gap.
+
+---
+
+## 15. "What can I make tonight?" quick path
+
+**Goal:** Lightweight skill that looks at the current pantry and suggests recipes from the Paprika library that can be made with what's in stock.
+
+**Problem:** `plan-the-week` is a full weekly commitment. There's no low-friction "I want to cook something tonight" path.
+
+**Sketch:** Call `get_pantry` + `list_recipes`, match in-stock ingredients against recipe ingredient lists, surface the top few options. No meal plan write required — just a suggestion.
+
+---
+
+## 16. Scheduled weekly planning trigger
+
+**Goal:** Automatically prompt to plan the week on a recurring schedule (e.g. Monday morning) so the workflow is genuinely passive.
+
+**Problem:** The user has to remember to open Claude and say "plan the week." The schedule skill infrastructure exists but isn't wired to the plan-the-week skill.
+
+**Sketch:** Use the `schedule` skill to create a Monday morning cron that runs the plan-the-week skill. Requires verifying how scheduled remote agents handle conversational skills.
+
+---
+
+## 17. Pantry review skill
+
+**Goal:** A skill that surfaces actionable pantry insights — out-of-stock proteins, items not restocked in a while, low-stock staples — rather than just dumping the table.
+
+**Problem:** `get_pantry` is a data dump. There's no standalone habit-forming tool that gives you a quick "here's what needs attention."
+
+**Sketch:** Wraps `get_pantry` + `get_household_rules`, categorizes items, flags out-of-stock proteins specifically (since those are high-impact), surfaces anything that looks stale or missing.
+
+---
+
+## 18. Meal plan deletion
+
+**Goal:** Add `remove_meal_from_plan` MCP tool so Claude can delete entries from the meal schedule.
+
+**What's needed:**
+- New `DeleteMealPlanEntry` client method — same soft-delete pattern as groceries: set `deleted=true` and POST to `/api/v1/sync/meals/` with Basic Auth + gzip multipart. **Must verify against real API before shipping.**
+- New `remove_meal_from_plan` MCP tool — accepts a meal plan entry UID (returned by `get_meal_plan`), calls the client delete, returns confirmation
+- Update `get_meal_plan` output to include entry UIDs so they're available for deletion
+
+**Unblocks:** plan-the-week skill "clear the week and start fresh" flow (#11 step 3).
+
+---
+
+## 19. Recipe deletion
+
+**Goal:** Expose `delete_paprika_recipe` as an MCP tool.
+
+**What's needed:**
+- `DeleteRecipe` client method already exists (sets `in_trash: true`, calls `SaveRecipe`)
+- Just needs a new MCP tool wired to it — accepts a recipe UID, confirms deletion
+- Note: this only moves to trash; full delete still requires going in-app to empty trash (limitation of the API)
+
+---
+
 ## How to approach this work
 
 1. ~~**#1**~~ — obsolete
@@ -147,6 +216,12 @@ DeleteGroceryItem verified working via integration test (commit f2d63b6).
 8. ~~**#8 (DRY refactor)**~~ — DONE ✅
 9. ~~**#9 (CLAUDE.md)**~~ — DONE ✅
 10. ~~**#10 (sync_grocery_list_to_pantry)**~~ — DONE ✅
-11. **#11 (plan the week skill)** — next up
+11. ~~**#11 (plan the week skill)**~~ — DONE ✅
 12. **#12 (skill layer over MCP tools)** — architecture work, do alongside #11
 13. ~~**#13 (test suite + UpdateGroceryItem fix)**~~ — DONE ✅
+14. **#14 (pantry depletion tracking)** — most important gap; pantry drifts without consumption tracking
+15. **#15 (what can I make tonight?)** — lightweight pantry-to-recipe suggestion skill
+16. **#16 (scheduled weekly planning trigger)** — wire plan-the-week to a Monday morning cron
+17. **#17 (pantry review skill)** — actionable pantry insights, not just a data dump
+18. **#18 (meal plan deletion)** — `remove_meal_from_plan` tool; unblocks plan-the-week clear-and-restart flow
+19. **#19 (recipe deletion)** — expose existing `DeleteRecipe` client method as MCP tool
