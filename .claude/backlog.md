@@ -39,7 +39,7 @@ Paprika handles aisle ordering natively via the configured aisle list. Woodmans-
 
 ## 5. Grocery list generation from meal plan + pantry — DONE ✅ (2026-03-28)
 
-**Delivered as a skill** (`.claude/skills/generate-grocery-list/SKILL.md`). LLM-driven workflow using existing MCP tools. Includes household rules (venison→ground beef, protein doubling, 25-50% general buffer), pantry matching, deduplication, and output summary.
+**Delivered as a skill** (`.claude/skills/generate-grocery-list/SKILL.md`). LLM-driven workflow using existing MCP tools. Includes pantry matching, deduplication, general 25-50% buffer, and output summary. Household-specific rules (substitutions, quantity multipliers) are loaded at runtime via `get_household_rules` — see #7.
 
 Also delivered: `sync_grocery_list_to_pantry` MCP tool — moves all checked (purchased) grocery items into the pantry and removes them from the grocery list. See #10 below for details.
 
@@ -55,9 +55,8 @@ Also delivered: `sync_grocery_list_to_pantry` MCP tool — moves all checked (pu
 - Config file: `rules/household.json` seeded with substitute-venison and double-proteins rules
 - Two new MCP tools: `get_household_rules` (no args, returns markdown) and `set_household_rule` (id, type, description, params JSON)
 - Rules persisted to disk on every `set_household_rule` call; loaded at server startup via `-rules` flag
+- Grocery generation skill updated to call `get_household_rules` at runtime — rules no longer hardcoded in prompt
 - 7 unit tests, all passing
-
-**Next:** Update the grocery generation skill to call `get_household_rules` instead of relying on hardcoded prompt rules.
 
 ---
 
