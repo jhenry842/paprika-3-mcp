@@ -79,9 +79,17 @@ Also delivered: `sync_grocery_list_to_pantry` MCP tool — moves all checked (pu
 
 New MCP tool: reads all checked (purchased=true) grocery items, upserts each into pantry (update existing to in_stock=true, or add new), then removes them from the grocery list via a soft-delete (deleted=true via V1 sync endpoint).
 
-**NOTE:** Grocery item deletion (DeleteGroceryItem with deleted=true via V1 sync) follows the meals/pantry soft-delete pattern but has NOT been tested against the real API. Verify on first use — if items don't disappear from the grocery list, the API may need a different approach.
+DeleteGroceryItem verified working via integration test (commit f2d63b6).
 
-Repo-level `CLAUDE.md` written covering architecture, available tools, build/deploy workflow, Paprika API quirks, and coding principles. Keep it updated as tools and conventions evolve.
+---
+
+## 13. Test suite + UpdateGroceryItem bug fix — DONE ✅ (2026-03-28)
+
+- Added `TestSaveAndDeleteGroceryItem` — verifies full grocery create/delete round-trip via V1 sync
+- Added `TestPantryClient` — verifies ListPantryItems and SavePantryItem create/update
+- Added `.claude/testing.md` — documents how to run tests, coverage map, known gaps, deploy workflow, and manual smoke check checklist
+- **Bug fixed:** `UpdateGroceryItem` was using V2 single-item endpoint which 404s on real items; switched to V1 upsert (same as SaveGroceryItem). Affected `setup_woodmans_aisles` and `update_grocery_item_aisle`.
+- All 14 tests passing (9 unit, 5 integration)
 
 ---
 
@@ -142,3 +150,4 @@ Repo-level `CLAUDE.md` written covering architecture, available tools, build/dep
 10. ~~**#10 (sync_grocery_list_to_pantry)**~~ — DONE ✅
 11. **#11 (plan the week skill)** — next up
 12. **#12 (skill layer over MCP tools)** — architecture work, do alongside #11
+13. ~~**#13 (test suite + UpdateGroceryItem fix)**~~ — DONE ✅
