@@ -34,6 +34,7 @@ type: project
 | 26 | `get_grocery_list` now exposes UIDs — required for delete/uncheck flows | 39add92 |
 | 28 | CLAUDE.md meal date format corrected — `add_meal_to_plan` takes `"YYYY-MM-DD"` not `"YYYY-MM-DD 00:00:00"` | this commit |
 | — | Array param JSON string fallback — `delete_grocery_items`, `uncheck_grocery_items`, `update_grocery_item_aisle` | cf17637, ea9672f |
+| — | `get_meal_plan` now exposes entry UIDs and recipe UIDs — required for `remove_meal_from_plan` | c7135cf |
 | — | Security: scrub credentials from repo history, use `~/.paprika-env` | 1d82d5b |
 
 ---
