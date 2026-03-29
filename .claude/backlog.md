@@ -36,6 +36,8 @@ type: project
 | — | Array param JSON string fallback — `delete_grocery_items`, `uncheck_grocery_items`, `update_grocery_item_aisle` | cf17637, ea9672f |
 | — | `get_meal_plan` now exposes entry UIDs and recipe UIDs — required for `remove_meal_from_plan` | c7135cf |
 | — | Security: scrub credentials from repo history, use `~/.paprika-env` | 1d82d5b |
+| — | Boolean param string fallback — `setup_woodmans_aisles`, `setup_pantry_aisles` `dry_run` param arrived as `"false"` string | 0d8e9bc |
+| — | Aisle map expansion — 29 new entries; corrected ranch/mayo/tartar sauce out of Oils; int'l sauces to International Cuisine | 3cd4992 |
 
 ---
 
