@@ -550,14 +550,15 @@ func (c *Client) SaveGroceryItem(ctx context.Context, item GroceryItem) error {
 	return c.notify(ctx)
 }
 
-// UpdateGroceryItem saves aisle (and other mutable fields) back to Paprika.
-// It follows the same gzip+multipart pattern as SaveRecipe.
+// UpdateGroceryItem saves aisle (and other mutable fields) back to Paprika via the V1 sync
+// endpoint. The V2 single-item endpoint (/api/v2/sync/grocery/{uid}/) returns 404 for
+// existing items, so we use the same V1 upsert path as SaveGroceryItem.
 func (c *Client) UpdateGroceryItem(ctx context.Context, item GroceryItem) error {
 	if item.UID == "" {
 		item.UID = newUID()
 	}
 
-	data, err := json.Marshal(item)
+	data, err := json.Marshal([]GroceryItem{item})
 	if err != nil {
 		return err
 	}
@@ -571,12 +572,12 @@ func (c *Client) UpdateGroceryItem(ctx context.Context, item GroceryItem) error 
 		return err
 	}
 
-	url := fmt.Sprintf("https://paprikaapp.com/api/v2/sync/grocery/%s/", item.UID)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, body)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://paprikaapp.com/api/v1/sync/groceries/", body)
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Content-Type", contentType)
+	req.SetBasicAuth(c.username, c.password)
 	req.ContentLength = int64(body.Len())
 
 	resp, err := c.client.Do(req)
