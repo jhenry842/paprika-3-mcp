@@ -32,17 +32,16 @@ type: project
 
 ## Active / Planned
 
-### #14 — Pantry depletion tracking ⚠️ most important gap
+### ~~#14 — done~~ → shipped as `close-cycle` skill
 
-**Design (pending clarification):** Use meal plan presence as a cook flag — meals that stay on the plan were cooked; meals you didn't cook get deleted via `remove_meal_from_plan`. At sync time, look at all meal plan entries between `last_sync_date` and today, fetch their recipes, and mark matching pantry items as out-of-stock (or deplete quantities).
+**Design:** `close-cycle` is the one canonical end-of-cycle sync — deplete from cooked meals → restock from shopping → advance `last_sync_date`. Always runs in that order. `last_sync_date` stored as a household rule (type: "sync", id: "last-sync-date"). Meals that stay on the plan = cooked; deleted via `remove_meal_from_plan` = skipped. First run with no `last_sync_date`: skips depletion entirely (clean start).
 
-**Sync log:** Track `last_sync_date` somewhere (household rules is the natural fit). At next sync, the depletion window is `last_sync_date → today`.
+**Notes for productionalization:** `last_sync_date` is a household rule (global per-account). In a multi-user/multi-household system this would need to be per-household.
 
-**Open questions before building:**
-1. Is pantry depletion part of the existing `sync-grocery-list` flow (combined post-shopping sync), or a separate "close out the week" step?
-2. Store `last_sync_date` as a household rule?
-3. Ingredient matching strategy: fuzzy name match, or just mark out-of-stock anything in a cooked recipe?
-4. What to do when a cooked recipe's ingredient has no matching pantry item — skip silently or flag?
+### #22 — Quantity matching: recipe amounts vs. typical purchase units
+During `close-cycle` depletion, recipe quantities ("2 tbsp soy sauce") frequently don't map to purchase units ("1 bottle"). Need a system that learns typical purchase quantities per ingredient and uses them to make smarter depletion decisions — e.g., "2 tbsp soy sauce from a 10oz bottle = not depleted, bottle stays in-stock." Options: household rules with per-ingredient purchase units, or a learned quantity map built from grocery history. **Design first, build second.**
+
+| 23 | `sync-grocery-list` guard rail — note added that it does NOT advance `last_sync_date` | TBD |
 
 ### #15 — "What can I make tonight?"
 Lightweight skill: `get_pantry` + `list_recipes`, match in-stock ingredients to recipes, surface top options. No meal plan write required.

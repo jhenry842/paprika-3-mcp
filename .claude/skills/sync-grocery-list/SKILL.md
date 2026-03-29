@@ -75,6 +75,7 @@ If no: "When you're ready, say 'plan the week' or 'generate grocery list'."
 
 ## Notes
 
+- **This skill does NOT advance `last_sync_date` and does NOT deplete the pantry.** It is for mid-cycle top-up shops only. For end-of-cycle close, use the `close-cycle` skill instead — that runs depletion + restock + sync date advancement as one atomic operation.
 - **Never sync without showing the checked item list first.** The user may have accidentally checked something.
 - **Staple matching is by `ingredient` field, not display name.** "Apples (3 lbs)" has ingredient `"apples"` — match on that.
 - **If `get_household_rules` returns no staple rules**, skip Step 2 and treat everything as non-staple.
