@@ -2,6 +2,7 @@ package mcpserver
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -14,16 +15,18 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/soggycactus/paprika-3-mcp/internal/aisles"
 	"github.com/soggycactus/paprika-3-mcp/internal/paprika"
+	"github.com/soggycactus/paprika-3-mcp/internal/rules"
 )
 
 type Options struct {
-	Version            string
-	Username           string
-	Password           string
-	RefreshInterval    time.Duration
-	AisleMapPath       string
-	DefaultGroceryList string
-	Logger             *slog.Logger
+	Version              string
+	Username             string
+	Password             string
+	RefreshInterval      time.Duration
+	AisleMapPath         string
+	HouseholdRulesPath   string
+	DefaultGroceryList   string
+	Logger               *slog.Logger
 }
 
 
@@ -43,29 +46,39 @@ func NewServer(opts Options) (*Server, error) {
 		return nil, fmt.Errorf("loading aisle map from %s: %w", opts.AisleMapPath, err)
 	}
 
+	hr, err := rules.Load(opts.HouseholdRulesPath)
+	if err != nil {
+		return nil, fmt.Errorf("loading household rules from %s: %w", opts.HouseholdRulesPath, err)
+	}
+
 	s := server.NewMCPServer("paprika-3-mcp", opts.Version, server.WithResourceCapabilities(false, false))
 	return &Server{
-		paprika3:           paprika3,
-		server:             s,
-		logger:             opts.Logger,
-		refreshInterval:    refreshInterval,
-		aisleMap:           am,
-		aisleMapPath:       opts.AisleMapPath,
-		defaultGroceryList: opts.DefaultGroceryList,
-		recipes:            make(map[string]*paprika.Recipe),
+		paprika3:             paprika3,
+		server:               s,
+		logger:               opts.Logger,
+		refreshInterval:      refreshInterval,
+		aisleMap:             am,
+		aisleMapPath:         opts.AisleMapPath,
+		householdRules:       hr,
+		householdRulesPath:   opts.HouseholdRulesPath,
+		defaultGroceryList:   opts.DefaultGroceryList,
+		recipes:              make(map[string]*paprika.Recipe),
 	}, nil
 }
 
 type Server struct {
-	paprika3           *paprika.Client
-	logger             *slog.Logger
-	server             *server.MCPServer
-	refreshInterval    time.Duration
-	aisleMap           aisles.AisleMap
-	aisleMapPath       string
-	defaultGroceryList string
-	recipes            map[string]*paprika.Recipe
-	recipesMu          sync.RWMutex
+	paprika3             *paprika.Client
+	logger               *slog.Logger
+	server               *server.MCPServer
+	refreshInterval      time.Duration
+	aisleMap             aisles.AisleMap
+	aisleMapPath         string
+	householdRules       rules.Rules
+	householdRulesPath   string
+	defaultGroceryList   string
+	recipes              map[string]*paprika.Recipe
+	recipesMu            sync.RWMutex
+	rulesMu              sync.RWMutex
 }
 
 func (s *Server) Start() {
@@ -134,6 +147,8 @@ func (s *Server) Start() {
 		server.ServerTool{Tool: setupPantryAislesTool(), Handler: s.setupPantryAisles},
 		server.ServerTool{Tool: addGroceryItemTool(), Handler: s.addGroceryItem},
 		server.ServerTool{Tool: syncGroceryListToPantryTool(), Handler: s.syncGroceryListToPantry},
+		server.ServerTool{Tool: getHouseholdRulesTool(), Handler: s.getHouseholdRules},
+		server.ServerTool{Tool: setHouseholdRuleTool(), Handler: s.setHouseholdRule},
 	)
 
 	if err := server.ServeStdio(s.server); err != nil {
@@ -1085,4 +1100,63 @@ func (s *Server) syncGroceryListToPantry(ctx context.Context, _ mcp.CallToolRequ
 		}
 	}
 	return mcp.NewToolResultText(sb.String()), nil
+}
+
+func getHouseholdRulesTool() mcp.Tool {
+	return mcp.NewTool("get_household_rules",
+		mcp.WithDescription("Return all household cooking and shopping rules. Rules govern substitutions (e.g. venison→ground beef) and quantity adjustments (e.g. double all proteins). Always read these before generating a grocery list or planning meals."),
+	)
+}
+
+func (s *Server) getHouseholdRules(_ context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	s.rulesMu.RLock()
+	defer s.rulesMu.RUnlock()
+	return mcp.NewToolResultText(s.householdRules.ToMarkdown()), nil
+}
+
+func setHouseholdRuleTool() mcp.Tool {
+	return mcp.NewTool("set_household_rule",
+		mcp.WithDescription("Add or update a household rule. Rules are persisted to disk and available in future sessions. Existing rules with the same id are replaced."),
+		mcp.WithString("id", mcp.Description("Unique identifier for the rule (e.g. 'substitute-venison', 'double-proteins')."), mcp.Required()),
+		mcp.WithString("type", mcp.Description("Rule type (e.g. 'substitution', 'quantity_multiplier', 'note')."), mcp.Required()),
+		mcp.WithString("description", mcp.Description("Human-readable description of what the rule does."), mcp.Required()),
+		mcp.WithString("params", mcp.Description("Optional JSON object of rule parameters (e.g. '{\"from\":\"venison\",\"to\":\"ground beef\"}')."), mcp.DefaultString("")),
+	)
+}
+
+func (s *Server) setHouseholdRule(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	id, _ := req.Params.Arguments["id"].(string)
+	ruleType, _ := req.Params.Arguments["type"].(string)
+	description, _ := req.Params.Arguments["description"].(string)
+	paramsStr, _ := req.Params.Arguments["params"].(string)
+
+	if id == "" || ruleType == "" || description == "" {
+		return mcp.NewToolResultError("id, type, and description are required"), nil
+	}
+
+	rule := rules.Rule{
+		ID:          id,
+		Type:        ruleType,
+		Description: description,
+	}
+
+	if paramsStr != "" {
+		var params map[string]any
+		if err := json.Unmarshal([]byte(paramsStr), &params); err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("invalid params JSON: %v", err)), nil
+		}
+		rule.Params = params
+	}
+
+	s.rulesMu.Lock()
+	s.householdRules = s.householdRules.Upsert(rule)
+	snapshot := s.householdRules
+	path := s.householdRulesPath
+	s.rulesMu.Unlock()
+
+	if err := snapshot.Save(path); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("rule updated in memory but failed to save to disk: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText(fmt.Sprintf("Rule '%s' saved.", id)), nil
 }

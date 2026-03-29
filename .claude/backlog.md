@@ -49,15 +49,15 @@ Also delivered: `sync_grocery_list_to_pantry` MCP tool — moves all checked (pu
 
 ---
 
-## 7. Household rules system — BACKLOG
+## 7. Household rules system — DONE ✅ (2026-03-28)
 
-**Goal:** Formalize household rules somewhere durable so they don't live only in the grocery generation skill prompt (where they are invisible to other skills and subject to context rot as the prompt evolves).
+- New `internal/rules` package: `Rule` struct, `Rules` slice, Load/Save/Upsert, `ToMarkdown()`
+- Config file: `rules/household.json` seeded with substitute-venison and double-proteins rules
+- Two new MCP tools: `get_household_rules` (no args, returns markdown) and `set_household_rule` (id, type, description, params JSON)
+- Rules persisted to disk on every `set_household_rule` call; loaded at server startup via `-rules` flag
+- 7 unit tests, all passing
 
-**Minimum rules to encode:**
-- Substitute ground beef for venison (always)
-- Proteins: buy double the recipe quantity
-
-**Direction:** Rules should live in a config file (JSON/YAML) loaded by the MCP server, readable via a `get_household_rules` tool, and writable via a `set_household_rule` tool. The grocery generation skill and any future planning workflow skill can then read them at runtime rather than having them hardcoded in prompts.
+**Next:** Update the grocery generation skill to call `get_household_rules` instead of relying on hardcoded prompt rules.
 
 ---
 
@@ -144,7 +144,7 @@ DeleteGroceryItem verified working via integration test (commit f2d63b6).
 4. ~~**#4**~~ — DONE ✅
 5. ~~**#5 (grocery generation skill)**~~ — DONE ✅
 6. ~~**#6**~~ — DONE ✅
-7. **#7 (household rules)** — formalize into config + MCP tools
+7. ~~**#7 (household rules)**~~ — DONE ✅
 8. ~~**#8 (DRY refactor)**~~ — DONE ✅
 9. ~~**#9 (CLAUDE.md)**~~ — DONE ✅
 10. ~~**#10 (sync_grocery_list_to_pantry)**~~ — DONE ✅

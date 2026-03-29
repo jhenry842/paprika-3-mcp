@@ -45,35 +45,21 @@ Only skip an item if its pantry match is `in_stock: yes`. If it's `in_stock: no`
 
 ### Step 4: Apply Household Rules
 
-Apply these rules to every ingredient that is NOT being skipped (i.e., not fully covered by the in-stock pantry):
+Call `get_household_rules` and apply every rule returned to ingredients that are NOT being skipped (i.e., not fully covered by the in-stock pantry).
+
+Interpret rules by type:
+
+**`substitution`** — Replace `params.from` ingredient with `params.to` wherever it appears. Do not add the original ingredient; add the substitute instead. Record the swap in the output summary.
+
+**`quantity_multiplier`** — For every ingredient whose category matches `params.category`, multiply the post-deduplication quantity by `params.multiplier`. For a `category` of `"protein"`, proteins include: beef (ground, stew, roast, brisket, steak, short ribs), chicken (breast, thigh, drumstick, whole, ground — each cut separate), pork (chops, tenderloin, ground, sausage, bacon, ham), fish and seafood (salmon, cod, tilapia, shrimp, tuna, halibut), lamb, turkey, eggs (a dozen = 12 eggs). Do not apply to pantry staples used as flavor (broth, stock, anchovies).
+
+**`note`** — Informational. No mechanical transformation; use the description to guide judgment calls.
+
+Apply substitutions first (they change what ingredient is on the list), then quantity multipliers (they change how much).
 
 ---
 
-**Rule 1 — Venison is in the freezer (substitution)**
-
-If any recipe calls for venison (ground venison, venison roast, venison stew meat, venison chili, etc.):
-- Do NOT add venison to the grocery list
-- Instead, substitute **ground beef** at double the recipe quantity (it goes through Rule 2 automatically)
-- Note the substitution in the output summary
-
----
-
-**Rule 2 — Proteins: buy double**
-
-For any protein, the quantity to purchase is **2× the (post-deduplication) recipe total**. Proteins are:
-- Beef in any form (ground beef, stew beef, roast, brisket, steak, short ribs)
-- Chicken in any form (breast, thigh, drumstick, whole, ground) — each cut is a separate line item
-- Pork (chops, tenderloin, ground pork, sausage, bacon, ham)
-- Fish and seafood (salmon, cod, tilapia, shrimp, tuna, halibut)
-- Lamb
-- Turkey
-- Eggs (a dozen = 12 eggs; double means buy 2 dozen)
-
-Do not apply this rule to pantry staples like broth, stock, or anchovies used as flavor — only to the protein being served as the main ingredient.
-
----
-
-**Rule 3 — Everything else: +25–50% buffer**
+**General buffer — everything else: +25–50%**
 
 Round up non-protein quantities to practical grocery increments. Use judgment:
 - "1 lb flour" → buy 2 lbs (next standard bag size)
@@ -115,6 +101,6 @@ After adding all items, report:
 
 1. **Added** — list of items added with quantities
 2. **Skipped (in pantry)** — items already in stock
-3. **Substitutions** — any venison → ground beef swaps
+3. **Substitutions** — any ingredient swaps applied from household rules
 4. **Already on list** — items that were already in the grocery list
 5. **Needs review** — any ingredient lines that couldn't be parsed cleanly

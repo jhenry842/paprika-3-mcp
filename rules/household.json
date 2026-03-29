@@ -1,0 +1,20 @@
+[
+  {
+    "id": "substitute-venison",
+    "type": "substitution",
+    "description": "Always substitute venison with ground beef when shopping. The household does not cook venison.",
+    "params": {
+      "from": "venison",
+      "to": "ground beef"
+    }
+  },
+  {
+    "id": "double-proteins",
+    "type": "quantity_multiplier",
+    "description": "Buy double the recipe quantity for all proteins (chicken, beef, pork, fish, etc.).",
+    "params": {
+      "category": "protein",
+      "multiplier": 2
+    }
+  }
+]

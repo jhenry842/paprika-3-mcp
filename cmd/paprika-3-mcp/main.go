@@ -32,6 +32,7 @@ func getLogFilePath() string {
 func main() {
 	refreshInterval := flag.Duration("refresh-interval", 5*time.Minute, "Recipe resource refresh interval")
 	aisleMap := flag.String("aisle-map", "aisles/woodmans_east.json", "Path to aisle map JSON file")
+	rulesPath := flag.String("rules", "rules/household.json", "Path to household rules JSON file")
 	groceryList := flag.String("grocery-list", "", "Default grocery list name (empty = first list)")
 	showVersion := flag.Bool("version", false, "Print version and exit")
 	flag.Parse()
@@ -67,6 +68,7 @@ func main() {
 		Password:           password,
 		RefreshInterval:    *refreshInterval,
 		AisleMapPath:       *aisleMap,
+		HouseholdRulesPath: *rulesPath,
 		DefaultGroceryList: *groceryList,
 		Logger:             logger,
 	})
