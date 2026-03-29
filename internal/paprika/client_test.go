@@ -75,6 +75,131 @@ func TestMealPlanClient(t *testing.T) {
 	assert.NotNil(t, entries)
 }
 
+func TestSaveAndDeleteGroceryItem(t *testing.T) {
+	username := os.Getenv("PAPRIKA_USERNAME")
+	password := os.Getenv("PAPRIKA_PASSWORD")
+	if username == "" || password == "" {
+		t.Skip("PAPRIKA_USERNAME and PAPRIKA_PASSWORD not set")
+	}
+
+	client, err := paprika.NewClient(username, password, "dev", nil)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+
+	// Grab list_uid from existing items — it's a required field.
+	existing, err := client.ListGroceryItems(ctx)
+	require.NoError(t, err)
+	var listUID string
+	for _, item := range existing {
+		if item.ListUID != "" {
+			listUID = item.ListUID
+			break
+		}
+	}
+
+	testItem := paprika.GroceryItem{
+		Name:       fmt.Sprintf("Test Item %d", time.Now().Unix()),
+		Ingredient: fmt.Sprintf("test ingredient %d", time.Now().Unix()),
+		Quantity:   "1 unit",
+		ListUID:    listUID,
+	}
+
+	// Save
+	require.NoError(t, client.SaveGroceryItem(ctx, testItem))
+
+	// Verify it appears
+	items, err := client.ListGroceryItems(ctx)
+	require.NoError(t, err)
+	var found *paprika.GroceryItem
+	for i := range items {
+		if items[i].Ingredient == testItem.Ingredient {
+			found = &items[i]
+			break
+		}
+	}
+	require.NotNil(t, found, "saved grocery item not found in list")
+	assert.Equal(t, testItem.Quantity, found.Quantity)
+	t.Logf("Saved grocery item: %s (UID: %s)", found.Name, found.UID)
+
+	// Delete
+	require.NoError(t, client.DeleteGroceryItem(ctx, *found))
+
+	// Verify it's gone
+	items, err = client.ListGroceryItems(ctx)
+	require.NoError(t, err)
+	for _, item := range items {
+		if item.UID == found.UID {
+			t.Errorf("deleted grocery item still present in list: %s", item.UID)
+		}
+	}
+}
+
+func TestPantryClient(t *testing.T) {
+	username := os.Getenv("PAPRIKA_USERNAME")
+	password := os.Getenv("PAPRIKA_PASSWORD")
+	if username == "" || password == "" {
+		t.Skip("PAPRIKA_USERNAME and PAPRIKA_PASSWORD not set")
+	}
+
+	client, err := paprika.NewClient(username, password, "dev", nil)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+
+	// List — just verify no error
+	items, err := client.ListPantryItems(ctx)
+	require.NoError(t, err)
+	assert.NotNil(t, items)
+
+	// Add a test item
+	testIngredient := fmt.Sprintf("test pantry item %d", time.Now().Unix())
+	testItem := paprika.PantryItem{
+		Ingredient: testIngredient,
+		Quantity:   "1 unit",
+		InStock:    true,
+	}
+	require.NoError(t, client.SavePantryItem(ctx, testItem))
+
+	// Verify it appears
+	items, err = client.ListPantryItems(ctx)
+	require.NoError(t, err)
+	var found *paprika.PantryItem
+	for i := range items {
+		if items[i].Ingredient == testIngredient {
+			found = &items[i]
+			break
+		}
+	}
+	require.NotNil(t, found, "saved pantry item not found in list")
+	assert.Equal(t, "1 unit", found.Quantity)
+	assert.True(t, found.InStock)
+	t.Logf("Saved pantry item: %s (UID: %s)", found.Ingredient, found.UID)
+
+	// Update quantity and in_stock
+	found.Quantity = "2 units"
+	found.InStock = false
+	require.NoError(t, client.SavePantryItem(ctx, *found))
+
+	// Verify update round-trips
+	items, err = client.ListPantryItems(ctx)
+	require.NoError(t, err)
+	var updated *paprika.PantryItem
+	for i := range items {
+		if items[i].UID == found.UID {
+			updated = &items[i]
+			break
+		}
+	}
+	require.NotNil(t, updated, "updated pantry item not found")
+	assert.Equal(t, "2 units", updated.Quantity)
+	assert.False(t, updated.InStock)
+
+	// No DeletePantryItem exists — test item persists in pantry.
+	// Remove manually from the app after running, or add DeletePantryItem if cleanup becomes painful.
+	t.Logf("Note: test pantry item left in place (no delete method): %s", found.UID)
+}
+
 func TestClient(t *testing.T) {
 	username := os.Getenv("PAPRIKA_USERNAME")
 	password := os.Getenv("PAPRIKA_PASSWORD")
