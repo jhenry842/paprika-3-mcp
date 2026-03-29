@@ -52,3 +52,15 @@ Standalone pantry health check: `get_pantry` + `get_household_rules`. Flags out-
 During `close-cycle` depletion, recipe quantities ("2 tbsp soy sauce") frequently don't map to purchase units ("1 bottle"). Need a system that learns typical purchase quantities per ingredient — e.g., "2 tbsp soy sauce from a 10oz bottle = bottle stays in-stock." Options: household rules with per-ingredient purchase units, or a learned quantity map from grocery history. **Design first, build second.**
 
 **Productionalization note:** `last_sync_date` is currently a household rule (global per-account). Multi-household deployments would need per-household storage.
+
+### #25 — Aisle map self-correction from manual Paprika changes
+When generating a grocery list or running setup-aisles, compare each item's current aisle in Paprika against what the aisle map would assign. If Paprika has a non-empty aisle that differs from the map, treat the Paprika value as the ground truth and update the map. Manual user corrections are always improvements. Only trigger when current aisle is non-empty AND conflicts with the map value — never overwrite a blank.
+
+### #26 — `get_grocery_list` should expose item UIDs
+`delete_grocery_items` requires UIDs, but `get_grocery_list` output doesn't include them. This silently breaks the delete flow in `sync-grocery-list` and `close-cycle`. Fix: include `uid` in the grocery list table output.
+
+### #27 — `plan-the-week` date arithmetic bug
+Skill assigned "Tue Apr 1" to a Tuesday slot when 2026-04-01 is actually a Wednesday, shifting all meals one day and leaving Tuesday blank. Skill must compute actual calendar dates (Monday = start_date, Tuesday = start_date+1, etc.) rather than inferring day-of-week from month/day.
+
+### #28 — CLAUDE.md meal date format is wrong
+Documents `"YYYY-MM-DD 00:00:00"` for `add_meal_to_plan` but the tool rejects it. Correct format is bare `"YYYY-MM-DD"`. Update CLAUDE.md.
