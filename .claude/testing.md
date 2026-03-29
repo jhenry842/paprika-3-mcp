@@ -13,17 +13,17 @@ These run offline and cover the aisle map lookup logic. Always run before commit
 ### Integration tests (require Paprika credentials)
 
 ```bash
-PAPRIKA_USERNAME=you@example.com PAPRIKA_PASSWORD=yourpassword \
-  go test ./internal/paprika/... -v -timeout 60s
+source ~/.paprika-env && \
+  go test ./internal/paprika/... -v -timeout 120s
 ```
 
-These hit the real Paprika API. Run after any change to `internal/paprika/client.go` or when adding a new API operation.
+These hit the real Paprika API. Always run with real credentials — never skip. Run after any change to `internal/paprika/client.go` or when adding a new API operation.
 
 ### All tests
 
 ```bash
-PAPRIKA_USERNAME=you@example.com PAPRIKA_PASSWORD=yourpassword \
-  go test ./... -v -timeout 60s
+source ~/.paprika-env && \
+  go test ./... -v -timeout 120s
 ```
 
 ---
@@ -44,13 +44,27 @@ PAPRIKA_USERNAME=you@example.com PAPRIKA_PASSWORD=yourpassword \
 | `TestLoadAndSave` | JSON round-trip via Load/Save |
 | `TestLoadMissingFile` | Error on missing file |
 
+### `internal/rules` (unit)
+
+| Test | Covers |
+|---|---|
+| `TestUpsertAdd` | Adding a new rule |
+| `TestUpsertReplace` | Replacing an existing rule by ID |
+| `TestUpsertPreservesOrder` | Order preserved on replace |
+| `TestLoadSaveRoundTrip` | JSON save/load round-trip |
+| `TestLoadMissingFileReturnsEmpty` | Missing file returns empty Rules |
+| `TestToMarkdownEmpty` | Empty rules markdown output |
+| `TestStapleRuleRoundTrip` | Staple rule type saves/loads with ingredient param |
+| `TestToMarkdownContainsRuleID` | Markdown output includes rule ID, type, description |
+
 ### `internal/paprika` (integration)
 
 | Test | Covers |
 |---|---|
 | `TestClient` | Recipe create, get, update, delete, list (full CRUD) |
 | `TestGroceryClient` | ListGroceryItems, UpdateGroceryItem (aisle round-trip) |
-| `TestSaveAndDeleteGroceryItem` | SaveGroceryItem (create), DeleteGroceryItem (soft-delete via `deleted=true` on V1 sync) — also validates the delete API assumption |
+| `TestSaveAndDeleteGroceryItem` | SaveGroceryItem (create), DeleteGroceryItem (soft-delete via `deleted=true` on V1 sync) |
+| `TestUncheckGroceryItem` | SaveGroceryItem (purchased=true), UpdateGroceryItem (uncheck → purchased=false), item stays on list, cleanup |
 | `TestMealPlanClient` | ListMealPlanEntries |
 | `TestPantryClient` | ListPantryItems, SavePantryItem create + update round-trip |
 
@@ -60,7 +74,7 @@ PAPRIKA_USERNAME=you@example.com PAPRIKA_PASSWORD=yourpassword \
 
 - **MCP server handlers** (`internal/mcpserver/server.go`) — not unit tested. Handler logic is thin by design (validate → call client → format output), so integration tests on the client layer cover the critical path. If handler logic grows, add handler-level tests.
 - **`TestPantryClient` leaves a test item** — no `DeletePantryItem` method exists. Test item persists in the pantry with a timestamped name. Remove manually from the app, or add `DeletePantryItem` if this becomes painful.
-- **`sync_grocery_list_to_pantry` tool** — covered indirectly by `TestSaveAndDeleteGroceryItem` (validates the delete path) and `TestPantryClient` (validates the upsert path). No end-to-end test of the combined flow.
+- **`sync_grocery_list_to_pantry` tool** (deprecated) — covered indirectly. The skill-driven flow uses `uncheck_grocery_items` and `delete_grocery_items`, both backed by client methods that are individually tested.
 
 ---
 
@@ -70,7 +84,8 @@ After any change to Go code:
 
 ```bash
 go build ./...                        # verify compile
-go test ./...                         # run all tests (with credentials for integration)
+source ~/.paprika-env && \
+  go test ./... -v -timeout 120s      # run all tests including integration
 go install ./cmd/paprika-3-mcp/       # install updated binary
 # then run /mcp in the Claude Code session to reconnect
 ```

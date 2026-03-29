@@ -3,7 +3,7 @@
 ## Build
 
 ```bash
-cd /home/john-henry-erikson/code/paprika-3-mcp
+cd ~/code/paprika-3-mcp
 go install ./cmd/paprika-3-mcp/
 ```
 
@@ -17,10 +17,10 @@ If you need to add it manually to `~/.claude/settings.json`:
 {
   "mcpServers": {
     "paprika": {
-      "command": "/home/john-henry-erikson/gopath/bin/paprika-3-mcp",
+      "command": "$GOPATH/bin/paprika-3-mcp",
       "args": [
         "--refresh-interval", "5m",
-        "--aisle-map", "/home/john-henry-erikson/code/paprika-3-mcp/aisles/woodmans_east.json",
+        "--aisle-map", "/path/to/paprika-3-mcp/aisles/woodmans_east.json",
         "--grocery-list", ""
       ],
       "env": {
