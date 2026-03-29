@@ -529,6 +529,8 @@ func (s *Server) setupWoodmansAisles(ctx context.Context, req mcp.CallToolReques
 	dryRun := true
 	if v, ok := req.Params.Arguments["dry_run"].(bool); ok {
 		dryRun = v
+	} else if s, ok := req.Params.Arguments["dry_run"].(string); ok {
+		dryRun = s != "false"
 	}
 
 	items, err := s.paprika3.ListGroceryItems(ctx)
@@ -584,6 +586,8 @@ func (s *Server) setupPantryAisles(ctx context.Context, req mcp.CallToolRequest)
 	dryRun := true
 	if v, ok := req.Params.Arguments["dry_run"].(bool); ok {
 		dryRun = v
+	} else if s, ok := req.Params.Arguments["dry_run"].(string); ok {
+		dryRun = s != "false"
 	}
 
 	items, err := s.paprika3.ListPantryItems(ctx)
