@@ -342,7 +342,13 @@ func updateGroceryItemAisleTool() mcp.Tool {
 func (s *Server) updateGroceryItemAisle(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	rawItems, ok := req.Params.Arguments["items"].([]interface{})
 	if !ok {
-		return mcp.NewToolResultError("items must be an array"), nil
+		if s, ok2 := req.Params.Arguments["items"].(string); ok2 {
+			if err := json.Unmarshal([]byte(s), &rawItems); err != nil {
+				return mcp.NewToolResultError("items must be an array"), nil
+			}
+		} else {
+			return mcp.NewToolResultError("items must be an array"), nil
+		}
 	}
 
 	existing, err := s.paprika3.ListGroceryItems(ctx)
