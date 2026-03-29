@@ -25,5 +25,37 @@
       "from": "pork shoulder",
       "to": "venison roast"
     }
+  },
+  {
+    "id": "staple-apples",
+    "type": "staple",
+    "description": "Apples are a weekly staple — keep on grocery list after shopping (uncheck rather than delete)",
+    "params": {
+      "ingredient": "apples"
+    }
+  },
+  {
+    "id": "staple-berries",
+    "type": "staple",
+    "description": "Berries are a weekly staple — keep on grocery list after shopping",
+    "params": {
+      "ingredient": "berries"
+    }
+  },
+  {
+    "id": "staple-blueberries",
+    "type": "staple",
+    "description": "Blueberries are a weekly staple — keep on grocery list after shopping",
+    "params": {
+      "ingredient": "blueberries"
+    }
+  },
+  {
+    "id": "staple-bananas",
+    "type": "staple",
+    "description": "Bananas are a weekly staple — keep on grocery list after shopping",
+    "params": {
+      "ingredient": "bananas"
+    }
   }
 ]
