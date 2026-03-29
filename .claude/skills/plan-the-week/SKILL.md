@@ -35,7 +35,7 @@ Call `get_meal_plan` for the confirmed date range. You can pass any future date 
 > 1. **Clear the week and start fresh** — remove all current entries and plan from scratch
 > 2. **Fill the empty slots only** — keep what's there and plan around it
 
-If the user chooses to clear: call `remove_meal_from_plan` for each existing entry UID before proceeding. If `remove_meal_from_plan` is not available (tool not yet built), tell the user you can't delete entries yet and offer to fill empty slots only instead.
+If the user chooses to clear: call `remove_meal_from_plan` for each existing entry UID before proceeding.
 
 Meal entry UIDs are returned by `get_meal_plan` — use them for deletion.
 
@@ -59,17 +59,18 @@ Wait for the user to respond before proceeding.
 
 ### Tried and True
 
-Call `list_recipes` to get the full recipe library. Filter to recipes that use in-stock proteins (by category tags or recipe name — use judgment). Propose 5–7 dinners that:
+Call `list_recipes` to get the full recipe library — the response includes a **Last Prepared** column. Filter to recipes that use in-stock proteins (by category tags or recipe name — use judgment). Propose 5–7 dinners that:
 
 - Use at least one in-stock protein each
 - Vary by protein type and cuisine — don't repeat the same protein two nights in a row
 - Are practical for a week (not all 4-hour braises)
+- **Prefer recipes not cooked in the last 3 weeks** — use Last Prepared to deprioritize anything made recently. Don't repeat a recipe that appeared on the plan in the past 7 days.
 
 Present the proposed week as a simple list (Mon–Sun dinners). Ask the user to confirm, swap specific days, or add lunches/breakfasts if they want.
 
 ### Try Something New
 
-Do the same as Tried and True for most slots. For 1–2 slots, identify recipes the user hasn't made recently: look for recipes with no rating, low rating (1–2 stars), or that seem underused. Offer 2–3 options for each "new" slot and let the user pick.
+Do the same as Tried and True for most slots. For 1–2 "new" slots, use Last Prepared to find recipes the user hasn't made recently (no Last Prepared date, or last prepared > 6 weeks ago) with a good rating (3+ stars). Offer 2–3 options per slot and let the user pick.
 
 If the recipe library has no good "new" candidates, note that and ask if the user wants to search the web for one.
 
@@ -113,6 +114,8 @@ If yes, run the generate-grocery-list skill inline — do not ask the user to in
 After the grocery list is generated (or if the user skips it), close with:
 
 > When you're done shopping, check off items in Paprika and then ask me to sync the grocery list to the pantry — that'll mark everything as in-stock for next week.
+>
+> During the week: **if you don't end up cooking a planned meal, remove it from the plan** — that's how we track what actually got cooked vs. what was skipped. Meals that stay on the plan are assumed cooked.
 
 ---
 

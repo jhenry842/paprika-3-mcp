@@ -33,7 +33,16 @@ type: project
 ## Active / Planned
 
 ### #14 — Pantry depletion tracking ⚠️ most important gap
-Nothing marks ingredients as consumed when you cook — pantry only grows. Options: conversational "anything you've run out of?" check at plan-the-week time, or a "meal cooked" step that marks recipe ingredients as depleted. Pantry accuracy is load-bearing for grocery generation.
+
+**Design (pending clarification):** Use meal plan presence as a cook flag — meals that stay on the plan were cooked; meals you didn't cook get deleted via `remove_meal_from_plan`. At sync time, look at all meal plan entries between `last_sync_date` and today, fetch their recipes, and mark matching pantry items as out-of-stock (or deplete quantities).
+
+**Sync log:** Track `last_sync_date` somewhere (household rules is the natural fit). At next sync, the depletion window is `last_sync_date → today`.
+
+**Open questions before building:**
+1. Is pantry depletion part of the existing `sync-grocery-list` flow (combined post-shopping sync), or a separate "close out the week" step?
+2. Store `last_sync_date` as a household rule?
+3. Ingredient matching strategy: fuzzy name match, or just mark out-of-stock anything in a cooked recipe?
+4. What to do when a cooked recipe's ingredient has no matching pantry item — skip silently or flag?
 
 ### #15 — "What can I make tonight?"
 Lightweight skill: `get_pantry` + `list_recipes`, match in-stock ingredients to recipes, surface top options. No meal plan write required.
