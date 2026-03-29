@@ -10,12 +10,8 @@
   },
   {
     "id": "double-proteins",
-    "type": "quantity_multiplier",
-    "description": "Buy double the recipe quantity for all proteins (chicken, beef, pork, fish, etc.).",
-    "params": {
-      "category": "protein",
-      "multiplier": 2
-    }
+    "type": "deleted",
+    "description": "Removed — double-protein purchasing rule was impractical at the store."
   },
   {
     "id": "substitute-venison-roast",
@@ -56,6 +52,23 @@
     "description": "Bananas are a weekly staple — keep on grocery list after shopping",
     "params": {
       "ingredient": "bananas"
+    }
+  },
+  {
+    "id": "substitute-ground-ginger",
+    "type": "substitution",
+    "description": "Always substitute ground ginger with fresh ginger. Never add ground ginger to the grocery list — buy fresh instead.",
+    "params": {
+      "from": "ground ginger",
+      "to": "fresh ginger"
+    }
+  },
+  {
+    "id": "staple-carrots",
+    "type": "staple",
+    "description": "Carrots are a weekly staple — keep on grocery list after shopping",
+    "params": {
+      "ingredient": "carrots"
     }
   }
 ]
