@@ -133,6 +133,7 @@ func (s *Server) Start() {
 		server.ServerTool{Tool: updatePantryItemTool(), Handler: s.updatePantryItem},
 		server.ServerTool{Tool: setupPantryAislesTool(), Handler: s.setupPantryAisles},
 		server.ServerTool{Tool: addGroceryItemTool(), Handler: s.addGroceryItem},
+		server.ServerTool{Tool: syncGroceryListToPantryTool(), Handler: s.syncGroceryListToPantry},
 	)
 
 	if err := server.ServeStdio(s.server); err != nil {
@@ -988,4 +989,100 @@ func (s *Server) updatePantryItem(ctx context.Context, req mcp.CallToolRequest) 
 		inStock = "out of stock"
 	}
 	return mcp.NewToolResultText(fmt.Sprintf("Updated %s: %s, %s.", target.Ingredient, target.Quantity, inStock)), nil
+}
+
+func syncGroceryListToPantryTool() mcp.Tool {
+	return mcp.NewTool("sync_grocery_list_to_pantry",
+		mcp.WithDescription("Move all checked (purchased) grocery items into the pantry and remove them from the grocery list. Items already in the pantry are updated to in_stock=true with the grocery item's quantity. Use this after checking off items at the store."),
+	)
+}
+
+func (s *Server) syncGroceryListToPantry(ctx context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	groceries, err := s.paprika3.ListGroceryItems(ctx)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	var purchased []paprika.GroceryItem
+	for _, item := range groceries {
+		if item.Purchased {
+			purchased = append(purchased, item)
+		}
+	}
+
+	if len(purchased) == 0 {
+		return mcp.NewToolResultText("No checked items on the grocery list."), nil
+	}
+
+	pantry, err := s.paprika3.ListPantryItems(ctx)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	pantryByName := make(map[string]paprika.PantryItem, len(pantry))
+	for _, p := range pantry {
+		pantryByName[strings.ToLower(p.Ingredient)] = p
+	}
+
+	var added, updated, failed []string
+	for _, item := range purchased {
+		ingredient := item.Ingredient
+		if ingredient == "" {
+			ingredient = item.Name
+		}
+
+		existing, exists := pantryByName[strings.ToLower(ingredient)]
+		if exists {
+			existing.InStock = true
+			if item.Quantity != "" {
+				existing.Quantity = item.Quantity
+			}
+			if err := s.paprika3.SavePantryItem(ctx, existing); err != nil {
+				failed = append(failed, fmt.Sprintf("%s (update pantry): %v", ingredient, err))
+				continue
+			}
+			updated = append(updated, ingredient)
+		} else {
+			aisle, _ := s.aisleMap.Lookup(ingredient)
+			newItem := paprika.PantryItem{
+				Ingredient: ingredient,
+				Quantity:   item.Quantity,
+				InStock:    true,
+				Aisle:      aisle,
+			}
+			if err := s.paprika3.SavePantryItem(ctx, newItem); err != nil {
+				failed = append(failed, fmt.Sprintf("%s (add to pantry): %v", ingredient, err))
+				continue
+			}
+			added = append(added, ingredient)
+		}
+
+		if err := s.paprika3.DeleteGroceryItem(ctx, item); err != nil {
+			failed = append(failed, fmt.Sprintf("%s (remove from grocery list): %v", ingredient, err))
+		}
+	}
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("## sync_grocery_list_to_pantry\n\nProcessed %d checked item(s).\n\n", len(purchased)))
+	if len(added) > 0 {
+		sb.WriteString(fmt.Sprintf("**Added to pantry (%d):**\n", len(added)))
+		for _, a := range added {
+			sb.WriteString(fmt.Sprintf("- %s\n", a))
+		}
+		sb.WriteString("\n")
+	}
+	if len(updated) > 0 {
+		sb.WriteString(fmt.Sprintf("**Updated in pantry (%d):**\n", len(updated)))
+		for _, u := range updated {
+			sb.WriteString(fmt.Sprintf("- %s\n", u))
+		}
+		sb.WriteString("\n")
+	}
+	if len(failed) > 0 {
+		sb.WriteString(fmt.Sprintf("**Errors (%d):**\n", len(failed)))
+		for _, f := range failed {
+			sb.WriteString(fmt.Sprintf("- %s\n", f))
+		}
+	}
+	return mcp.NewToolResultText(sb.String()), nil
 }

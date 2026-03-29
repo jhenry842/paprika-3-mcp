@@ -29,6 +29,7 @@ go.work.sum
 .mcp*
 
 # local dev artifacts
-.claude/
+.claude/memory/
+.claude/settings.local.json
 docs/superpowers/
 paprika-3-mcp

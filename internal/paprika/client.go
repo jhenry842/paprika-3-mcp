@@ -475,6 +475,7 @@ type GroceryItem struct {
 	Separate    bool    `json:"separate"`
 	Purchased   bool    `json:"purchased"`
 	OrderFlag   int     `json:"order_flag"`
+	Deleted     bool    `json:"deleted"`
 }
 
 
@@ -511,6 +512,7 @@ func (c *Client) SaveGroceryItem(ctx context.Context, item GroceryItem) error {
 	if item.UID == "" {
 		item.UID = newUID()
 	}
+	item.Deleted = false
 
 	data, err := json.Marshal([]GroceryItem{item})
 	if err != nil {
@@ -575,6 +577,49 @@ func (c *Client) UpdateGroceryItem(ctx context.Context, item GroceryItem) error 
 		return err
 	}
 	req.Header.Set("Content-Type", contentType)
+	req.ContentLength = int64(body.Len())
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		b, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("paprika API error %d: %s", resp.StatusCode, b)
+	}
+
+	return c.notify(ctx)
+}
+
+// DeleteGroceryItem removes a grocery item via the V1 sync endpoint by sending deleted=true.
+// This follows the same soft-delete pattern as MealPlanEntry and PantryItem.
+// NOTE: Verify this works against the real API — the Paprika V1 sync pattern is consistent
+// across meals and pantry, but grocery deletion has not been tested independently.
+func (c *Client) DeleteGroceryItem(ctx context.Context, item GroceryItem) error {
+	item.Deleted = true
+
+	data, err := json.Marshal([]GroceryItem{item})
+	if err != nil {
+		return err
+	}
+	gz, err := gzipBytes(data)
+	if err != nil {
+		return err
+	}
+
+	body, contentType, err := buildMultipartBody(gz)
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://paprikaapp.com/api/v1/sync/groceries/", body)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", contentType)
+	req.SetBasicAuth(c.username, c.password)
 	req.ContentLength = int64(body.Len())
 
 	resp, err := c.client.Do(req)
