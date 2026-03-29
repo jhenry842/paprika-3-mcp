@@ -136,7 +136,7 @@ func (s *Server) Start() {
 	},
 		server.ServerTool{Tool: getGroceryListTool(), Handler: s.getGroceryList},
 		server.ServerTool{Tool: updateGroceryItemAisleTool(), Handler: s.updateGroceryItemAisle},
-		server.ServerTool{Tool: setupWoodmansAislesTool(), Handler: s.setupWoodmansAisles},
+		server.ServerTool{Tool: setupAislesTool(), Handler: s.setupAisles},
 		server.ServerTool{Tool: getMealPlanTool(), Handler: s.getMealPlan},
 		server.ServerTool{Tool: addMealToPlanTool(), Handler: s.addMealToPlan},
 		server.ServerTool{Tool: listRecipesTool(), Handler: s.listRecipes},
@@ -145,7 +145,6 @@ func (s *Server) Start() {
 		server.ServerTool{Tool: addPantryItemTool(), Handler: s.addPantryItem},
 		server.ServerTool{Tool: updatePantryItemTool(), Handler: s.updatePantryItem},
 		server.ServerTool{Tool: deletePantryItemTool(), Handler: s.deletePantryItem},
-		server.ServerTool{Tool: setupPantryAislesTool(), Handler: s.setupPantryAisles},
 		server.ServerTool{Tool: removeMealFromPlanTool(), Handler: s.removeMealFromPlan},
 		server.ServerTool{Tool: addGroceryItemTool(), Handler: s.addGroceryItem},
 		server.ServerTool{Tool: uncheckGroceryItemsTool(), Handler: s.uncheckGroceryItems},
@@ -516,26 +515,61 @@ func (s *Server) applyAisleAssignments(
 	return mcp.NewToolResultText(sb.String()), nil
 }
 
-func setupWoodmansAislesTool() mcp.Tool {
-	return mcp.NewTool("setup_woodmans_aisles",
-		mcp.WithDescription("Map all grocery list items to their Woodman's East aisle. dry_run=true (default) shows proposed changes without writing. Set dry_run=false to commit. Items not found in the aisle map are flagged for manual review."),
+func setupAislesTool() mcp.Tool {
+	return mcp.NewTool("setup_aisles",
+		mcp.WithDescription("Bulk-assign aisles from the configured aisle map. target: \"grocery\" (default), \"pantry\", or \"both\". dry_run=true (default) shows proposed changes without writing. Set dry_run=false to commit."),
+		mcp.WithString("target",
+			mcp.Description("Which list to update: \"grocery\", \"pantry\", or \"both\". Defaults to \"grocery\"."),
+			mcp.DefaultString("grocery"),
+		),
 		mcp.WithBoolean("dry_run",
 			mcp.Description("If true (default), return proposed changes without writing to Paprika."),
 		),
 	)
 }
 
-func (s *Server) setupWoodmansAisles(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (s *Server) setupAisles(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	dryRun := true
 	if v, ok := req.Params.Arguments["dry_run"].(bool); ok {
 		dryRun = v
-	} else if s, ok := req.Params.Arguments["dry_run"].(string); ok {
-		dryRun = s != "false"
+	} else if str, ok := req.Params.Arguments["dry_run"].(string); ok {
+		dryRun = str != "false"
 	}
 
+	target, _ := req.Params.Arguments["target"].(string)
+	if target == "" {
+		target = "grocery"
+	}
+
+	var sb strings.Builder
+	runGrocery := target == "grocery" || target == "both"
+	runPantry := target == "pantry" || target == "both"
+
+	if runGrocery {
+		result, err := s.setupGroceryAislesInternal(ctx, dryRun)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		sb.WriteString(result)
+	}
+	if runPantry {
+		if runGrocery {
+			sb.WriteString("\n---\n\n")
+		}
+		result, err := s.setupPantryAislesInternal(ctx, dryRun)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		sb.WriteString(result)
+	}
+
+	return mcp.NewToolResultText(sb.String()), nil
+}
+
+func (s *Server) setupGroceryAislesInternal(ctx context.Context, dryRun bool) (string, error) {
 	items, err := s.paprika3.ListGroceryItems(ctx)
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return "", err
 	}
 
 	var proposals []aisleCandidate
@@ -569,30 +603,18 @@ func (s *Server) setupWoodmansAisles(ctx context.Context, req mcp.CallToolReques
 		}
 	}
 
-	return s.applyAisleAssignments(ctx, "setup_woodmans_aisles", dryRun, proposals, unknown,
-		"To add them: update `aisles/woodmans_east.json` and re-run.")
-}
-
-func setupPantryAislesTool() mcp.Tool {
-	return mcp.NewTool("setup_pantry_aisles",
-		mcp.WithDescription("Map all pantry items to their aisle using the aisle map. dry_run=true (default) shows proposed changes without writing. Set dry_run=false to commit. Items not found in the aisle map are flagged for manual review."),
-		mcp.WithBoolean("dry_run",
-			mcp.Description("If true (default), return proposed changes without writing to Paprika."),
-		),
-	)
-}
-
-func (s *Server) setupPantryAisles(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	dryRun := true
-	if v, ok := req.Params.Arguments["dry_run"].(bool); ok {
-		dryRun = v
-	} else if s, ok := req.Params.Arguments["dry_run"].(string); ok {
-		dryRun = s != "false"
+	res, err := s.applyAisleAssignments(ctx, "setup_aisles (grocery)", dryRun, proposals, unknown,
+		"To add them: update the aisle map JSON file and re-run.")
+	if err != nil {
+		return "", err
 	}
+	return res.Content[0].(mcp.TextContent).Text, nil
+}
 
+func (s *Server) setupPantryAislesInternal(ctx context.Context, dryRun bool) (string, error) {
 	items, err := s.paprika3.ListPantryItems(ctx)
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return "", err
 	}
 
 	// Build aisle name → aisle_uid map from existing items that already have UIDs.
@@ -628,7 +650,11 @@ func (s *Server) setupPantryAisles(ctx context.Context, req mcp.CallToolRequest)
 		}
 	}
 
-	return s.applyAisleAssignments(ctx, "setup_pantry_aisles", dryRun, proposals, unknown, "")
+	res, err := s.applyAisleAssignments(ctx, "setup_aisles (pantry)", dryRun, proposals, unknown, "")
+	if err != nil {
+		return "", err
+	}
+	return res.Content[0].(mcp.TextContent).Text, nil
 }
 
 func (s *Server) updateRecipe(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {

@@ -34,7 +34,7 @@ See anything missing? Open an issue on this repo to request a feature!
 - `get_grocery_list` — Fetch all grocery list items with UID, aisle, quantity, and purchased status (UIDs required for delete/uncheck)
 - `add_grocery_item` — Add an item to the grocery list
 - `update_grocery_item_aisle` — Set the aisle label on one or more grocery items
-- `setup_woodmans_aisles` — Bulk-assign Woodman's East aisles to all grocery list items
+- `setup_aisles` — Bulk-assign aisles from the aisle map; `target`: `"grocery"` (default), `"pantry"`, or `"both"`
 - `uncheck_grocery_items` — Set purchased=false on items by UID (for staples that stay on the list)
 - `delete_grocery_items` — Remove items from the grocery list by UID
 
@@ -43,7 +43,6 @@ See anything missing? Open an issue on this repo to request a feature!
 - `add_pantry_item` — Add a new item to the pantry
 - `update_pantry_item` — Update quantity or in-stock status of a pantry item
 - `delete_pantry_item` — Permanently remove a pantry item
-- `setup_pantry_aisles` — Bulk-assign Woodman's East aisles to all pantry items
 
 **Household Rules**
 - `get_household_rules` — Fetch all household rules (staples, substitutions, sync anchors)
@@ -174,7 +173,7 @@ Restart Claude and you should see the MCP server tools after clicking on the ham
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--refresh-interval` | `5m` | How often to refresh the recipe resource cache |
-| `--aisle-map` | `aisles/woodmans_east.json` | Path to aisle map JSON file (used by `setup_woodmans_aisles` and `setup_pantry_aisles`) |
+| `--aisle-map` | `aisles/woodmans_east.json` | Path to aisle map JSON file (used by `setup_aisles`) |
 | `--grocery-list` | *(first list)* | Default grocery list name; empty string uses the first list |
 | `--version` | — | Print version and exit |
 

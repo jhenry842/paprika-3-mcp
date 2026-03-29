@@ -44,7 +44,7 @@ Skills live in `.claude/skills/` and are Claude Code skill files — they orches
 | `get_grocery_list` | List all grocery items with UID, aisle, quantity, and purchased status — UIDs required for delete/uncheck |
 | `add_grocery_item` | Add an item to the grocery list |
 | `update_grocery_item_aisle` | Set aisle on one or more grocery items |
-| `setup_woodmans_aisles` | Bulk-assign aisles to grocery items from the aisle map |
+| `setup_aisles` | Bulk-assign aisles from the aisle map — `target`: `"grocery"` (default), `"pantry"`, or `"both"` |
 | `uncheck_grocery_items` | Set purchased=false on items by UID (keeps staples on list) |
 | `delete_grocery_items` | Remove items from the grocery list by UID |
 | `sync_grocery_list_to_pantry` | ⚠️ Deprecated — use the `sync-grocery-list` skill instead |
@@ -57,7 +57,6 @@ Skills live in `.claude/skills/` and are Claude Code skill files — they orches
 | `add_pantry_item` | Add a new item to the pantry |
 | `update_pantry_item` | Update quantity or in-stock status of a pantry item |
 | `delete_pantry_item` | Permanently remove a pantry item (soft-delete via deleted=true) |
-| `setup_pantry_aisles` | Bulk-assign aisles to pantry items from the aisle map |
 
 ### Household Rules
 

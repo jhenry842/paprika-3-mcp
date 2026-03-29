@@ -38,6 +38,7 @@ type: project
 | — | Security: scrub credentials from repo history, use `~/.paprika-env` | 1d82d5b |
 | — | Boolean param string fallback — `setup_woodmans_aisles`, `setup_pantry_aisles` `dry_run` param arrived as `"false"` string | 0d8e9bc |
 | — | Aisle map expansion — 29 new entries; corrected ranch/mayo/tartar sauce out of Oils; int'l sauces to International Cuisine | 3cd4992 |
+| — | `setup_woodmans_aisles` + `setup_pantry_aisles` collapsed into single `setup_aisles(target)` tool; add `AisleUID` to `PantryItem`; aisle shown in `get_pantry` | this commit |
 
 ---
 
