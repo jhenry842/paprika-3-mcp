@@ -41,7 +41,7 @@ Skills live in `.claude/skills/` and are Claude Code skill files — they orches
 
 | Tool | What it does |
 |---|---|
-| `get_grocery_list` | List all grocery items with aisle, quantity, and purchased status |
+| `get_grocery_list` | List all grocery items with UID, aisle, quantity, and purchased status — UIDs required for delete/uncheck |
 | `add_grocery_item` | Add an item to the grocery list |
 | `update_grocery_item_aisle` | Set aisle on one or more grocery items |
 | `setup_woodmans_aisles` | Bulk-assign aisles to grocery items from the aisle map |
@@ -127,7 +127,7 @@ Tests hit the real API and clean up after themselves. Never skip integration tes
 
 - **Two API versions in use.** V2 uses Bearer token auth (set by the roundTripper middleware). V1 uses HTTP Basic Auth and is required for all write operations (groceries, meals, pantry).
 - **All write operations** (V1 and V2) use gzip-compressed JSON wrapped in a multipart form upload — see `gzipBytes` and `buildMultipartBody` helpers in `client.go`.
-- **Meal plan and grocery dates** must be in `"YYYY-MM-DD 00:00:00"` format, not bare `"YYYY-MM-DD"`.
+- **Meal plan dates** for `add_meal_to_plan` must be bare `"YYYY-MM-DD"`. The `"YYYY-MM-DD 00:00:00"` format is rejected by the tool.
 - **V2 recipe saves** can return HTTP 200 with an error payload — always run `isErrorResponse` after reading the body on recipe write endpoints.
 - **Soft deletes everywhere.** Groceries, meals, and pantry items are deleted by setting `deleted: true` and POSTing to the same V1 sync endpoint. There is no DELETE HTTP method.
 - **Meal plan history persists.** The `/api/v2/sync/meals/` endpoint returns all historical entries. Last Prepared is derived by finding the most recent past entry per recipe UID.
@@ -148,3 +148,5 @@ Tests hit the real API and clean up after themselves. Never skip integration tes
 **Verify before building.** Never assume an API endpoint exists or behaves a certain way based on patterns from other endpoints. The Paprika API is inconsistent. Test against the real API first.
 
 **YAGNI.** Don't add configuration knobs, abstractions, or fallbacks for scenarios that don't exist yet. Build for what's needed now.
+
+**Array parameters need JSON encoding.** Tools that accept array parameters (`delete_grocery_items`, `uncheck_grocery_items`, `update_grocery_item_aisle`) receive the value as a JSON string when called by Claude. Handlers must attempt `json.Unmarshal` as a fallback if the direct `.([]interface{})` assertion fails.

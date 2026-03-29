@@ -31,7 +31,7 @@ See anything missing? Open an issue on this repo to request a feature!
 - `remove_meal_from_plan` — Remove a meal plan entry by UID; used to mark a meal as skipped (not cooked)
 
 **Grocery List**
-- `get_grocery_list` — Fetch all grocery list items with aisle, quantity, and purchased status
+- `get_grocery_list` — Fetch all grocery list items with UID, aisle, quantity, and purchased status (UIDs required for delete/uncheck)
 - `add_grocery_item` — Add an item to the grocery list
 - `update_grocery_item_aisle` — Set the aisle label on one or more grocery items
 - `setup_woodmans_aisles` — Bulk-assign Woodman's East aisles to all grocery list items
