@@ -21,7 +21,7 @@ type: project
 | 9 | CLAUDE.md | 8799aba |
 | 10 | `sync_grocery_list_to_pantry` | c058b46 |
 | 11 | plan-the-week skill | dd02a7e |
-| 12 | Skill layer: `sync-grocery-list` + `setup-aisles` skills | 2026-03-29 |
+| 12 | Skill layer: `sync-grocery-list` + `setup-aisles` skills | 1a0c9ea |
 | 13 | Test suite + `UpdateGroceryItem` bug fix (14 tests) | f2d63b6 |
 | 20b | Staple items: `uncheck_grocery_items`, `delete_grocery_items`, staple rule type | 1a0c9ea |
 | — | Security: scrub credentials from repo history, use `~/.paprika-env` | 1d82d5b |
