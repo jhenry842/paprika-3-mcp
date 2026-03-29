@@ -897,6 +897,47 @@ func (c *Client) ListPantryItems(ctx context.Context) ([]PantryItem, error) {
 	return result.Result, json.NewDecoder(resp.Body).Decode(&result)
 }
 
+// DeletePantryItem soft-deletes a pantry item by setting deleted=true and POSTing
+// to the V1 sync endpoint. Follows the same pattern as DeleteGroceryItem and DeleteMealPlanEntry.
+func (c *Client) DeletePantryItem(ctx context.Context, item PantryItem) error {
+	item.Deleted = true
+
+	data, err := json.Marshal([]PantryItem{item})
+	if err != nil {
+		return err
+	}
+	gz, err := gzipBytes(data)
+	if err != nil {
+		return err
+	}
+
+	body, contentType, err := buildMultipartBody(gz)
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://paprikaapp.com/api/v1/sync/pantry/", body)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", contentType)
+	req.SetBasicAuth(c.username, c.password)
+	req.ContentLength = int64(body.Len())
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		b, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("paprika API error %d: %s", resp.StatusCode, b)
+	}
+
+	return c.notify(ctx)
+}
+
 func (c *Client) SavePantryItem(ctx context.Context, item PantryItem) error {
 	if item.UID == "" {
 		item.UID = newUID()

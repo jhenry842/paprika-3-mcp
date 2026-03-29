@@ -104,7 +104,33 @@ Ask the user: "Want me to add any of the unmatched items to the pantry?" before 
 
 ---
 
-## Step 6: Restock from Shopping
+## Step 6: Pantry Hygiene
+
+After depletion, call `get_pantry` and surface all items currently marked `in_stock: false`.
+
+Split them into two groups for the user:
+
+**Just depleted this cycle** — items that were in-stock before this run and were marked out-of-stock by Step 4. These are expected — you used them. Skip unless the user asks about them.
+
+**Persistently out-of-stock** — items that were already `in_stock: false` before depletion started (i.e., they weren't restocked last cycle either). These are candidates for removal.
+
+Present the persistently out-of-stock list:
+
+> These pantry items have been out of stock since before this cycle — you may no longer buy them:
+> - item A
+> - item B
+>
+> Want to remove any of these?
+
+For each item the user confirms: call `delete_pantry_item`. For items they want to keep, leave them in place.
+
+If there are no persistently out-of-stock items, skip this step silently.
+
+---
+
+## Step 7: Restock from Shopping
+
+
 
 Run the sync-grocery-list workflow inline:
 
@@ -118,7 +144,7 @@ If there are no checked items, note it and continue — don't abort the cycle cl
 
 ---
 
-## Step 7: Advance the Sync Date
+## Step 8: Advance the Sync Date
 
 Call `set_household_rule` with:
 - `id`: `"last-sync-date"`
@@ -130,7 +156,7 @@ Confirm to the user: "Sync date set to [date]. Next cycle will deplete from meal
 
 ---
 
-## Step 8: Summary
+## Step 9: Summary
 
 Wrap up with a brief summary:
 

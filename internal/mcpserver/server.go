@@ -144,6 +144,7 @@ func (s *Server) Start() {
 		server.ServerTool{Tool: getPantryTool(), Handler: s.getPantry},
 		server.ServerTool{Tool: addPantryItemTool(), Handler: s.addPantryItem},
 		server.ServerTool{Tool: updatePantryItemTool(), Handler: s.updatePantryItem},
+		server.ServerTool{Tool: deletePantryItemTool(), Handler: s.deletePantryItem},
 		server.ServerTool{Tool: setupPantryAislesTool(), Handler: s.setupPantryAisles},
 		server.ServerTool{Tool: removeMealFromPlanTool(), Handler: s.removeMealFromPlan},
 		server.ServerTool{Tool: addGroceryItemTool(), Handler: s.addGroceryItem},
@@ -1071,6 +1072,45 @@ func (s *Server) updatePantryItem(ctx context.Context, req mcp.CallToolRequest) 
 		inStock = "out of stock"
 	}
 	return mcp.NewToolResultText(fmt.Sprintf("Updated %s: %s, %s.", target.Ingredient, target.Quantity, inStock)), nil
+}
+
+func deletePantryItemTool() mcp.Tool {
+	return mcp.NewTool("delete_pantry_item",
+		mcp.WithDescription("Permanently remove a pantry item by ingredient name. Use during close-cycle pantry hygiene to remove items you no longer buy."),
+		mcp.WithString("ingredient",
+			mcp.Description("Ingredient name exactly as shown in get_pantry."),
+			mcp.Required(),
+		),
+	)
+}
+
+func (s *Server) deletePantryItem(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	ingredient, _ := req.Params.Arguments["ingredient"].(string)
+	if ingredient == "" {
+		return mcp.NewToolResultError("ingredient is required"), nil
+	}
+
+	items, err := s.paprika3.ListPantryItems(ctx)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	var target *paprika.PantryItem
+	for i := range items {
+		if strings.EqualFold(items[i].Ingredient, ingredient) {
+			target = &items[i]
+			break
+		}
+	}
+	if target == nil {
+		return mcp.NewToolResultError(fmt.Sprintf("no pantry item found with ingredient %q", ingredient)), nil
+	}
+
+	if err := s.paprika3.DeletePantryItem(ctx, *target); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	return mcp.NewToolResultText(fmt.Sprintf("Deleted %s from pantry.", target.Ingredient)), nil
 }
 
 func uncheckGroceryItemsTool() mcp.Tool {

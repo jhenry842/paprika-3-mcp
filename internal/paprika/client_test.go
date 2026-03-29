@@ -262,9 +262,15 @@ func TestPantryClient(t *testing.T) {
 	assert.Equal(t, "2 units", updated.Quantity)
 	assert.False(t, updated.InStock)
 
-	// No DeletePantryItem exists — test item persists in pantry.
-	// Remove manually from the app after running, or add DeletePantryItem if cleanup becomes painful.
-	t.Logf("Note: test pantry item left in place (no delete method): %s", found.UID)
+	// Clean up
+	require.NoError(t, client.DeletePantryItem(ctx, *updated))
+	items, err = client.ListPantryItems(ctx)
+	require.NoError(t, err)
+	for _, item := range items {
+		if item.UID == found.UID {
+			t.Errorf("deleted pantry item still present: %s", item.UID)
+		}
+	}
 }
 
 func TestDeleteMealPlanEntry(t *testing.T) {
@@ -474,6 +480,49 @@ func TestMealPlanHistory(t *testing.T) {
 	if len(mealsResp.Result) > 0 {
 		t.Logf("Raw meal plan entry fields: %v", mealsResp.Result[0])
 	}
+}
+
+func TestDeletePantryItem(t *testing.T) {
+	username := os.Getenv("PAPRIKA_USERNAME")
+	password := os.Getenv("PAPRIKA_PASSWORD")
+	if username == "" || password == "" {
+		t.Skip("PAPRIKA_USERNAME and PAPRIKA_PASSWORD not set")
+	}
+
+	client, err := paprika.NewClient(username, password, "dev", nil)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+
+	testItem := paprika.PantryItem{
+		Ingredient: fmt.Sprintf("test delete pantry item %d", time.Now().Unix()),
+		Quantity:   "1 unit",
+		InStock:    true,
+	}
+	require.NoError(t, client.SavePantryItem(ctx, testItem))
+
+	items, err := client.ListPantryItems(ctx)
+	require.NoError(t, err)
+	var saved *paprika.PantryItem
+	for i := range items {
+		if items[i].Ingredient == testItem.Ingredient {
+			saved = &items[i]
+			break
+		}
+	}
+	require.NotNil(t, saved, "saved pantry item not found")
+	t.Logf("Created pantry item: %s (UID: %s)", saved.Ingredient, saved.UID)
+
+	require.NoError(t, client.DeletePantryItem(ctx, *saved))
+
+	items, err = client.ListPantryItems(ctx)
+	require.NoError(t, err)
+	for _, item := range items {
+		if item.UID == saved.UID {
+			t.Errorf("deleted pantry item still present: %s", item.UID)
+		}
+	}
+	t.Log("Pantry item successfully deleted")
 }
 
 func TestGetLastPreparedDates(t *testing.T) {
