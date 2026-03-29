@@ -42,7 +42,7 @@ type: project
 During `close-cycle` depletion, recipe quantities ("2 tbsp soy sauce") frequently don't map to purchase units ("1 bottle"). Need a system that learns typical purchase quantities per ingredient and uses them to make smarter depletion decisions — e.g., "2 tbsp soy sauce from a 10oz bottle = not depleted, bottle stays in-stock." Options: household rules with per-ingredient purchase units, or a learned quantity map built from grocery history. **Design first, build second.**
 
 | 23 | `sync-grocery-list` guard rail — note added that it does NOT advance `last_sync_date` | 3386d86 |
-| 24 | `delete_pantry_item` — soft-delete via `deleted=true` on V1 sync endpoint; pantry hygiene in `close-cycle` | TBD |
+| 24 | `delete_pantry_item` — soft-delete via `deleted=true` on V1 sync endpoint; pantry hygiene in `close-cycle` | b8ae268 |
 
 ### #15 — "What can I make tonight?"
 Lightweight skill: `get_pantry` + `list_recipes`, match in-stock ingredients to recipes, surface top options. No meal plan write required.
