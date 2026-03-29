@@ -24,6 +24,7 @@ See anything missing? Open an issue on this repo to request a feature!
 - `get_recipe` — Fetch full recipe content (ingredients, directions, notes, last prepared date) by UID
 - `create_paprika_recipe` — Save a new recipe to your Paprika app
 - `update_paprika_recipe` — Modify an existing recipe
+- `delete_paprika_recipe` — Move a recipe to trash by UID (full delete requires emptying trash in-app)
 
 **Meal Plan**
 - `get_meal_plan` — Fetch the meal plan for a date range
@@ -55,6 +56,7 @@ Skills are conversational workflows that orchestrate multiple MCP tools in seque
 | Skill | How to invoke | What it does |
 |---|---|---|
 | `plan-the-week` | "plan the week", "what should we eat this week" | Pantry review → meal selection → meal plan population → grocery list generation |
+| `what-can-i-make` | "what can I make tonight?", "what can I cook?" | Match in-stock pantry → recipes, ranked by rating + recency; optional meal plan write |
 | `generate-grocery-list` | "generate grocery list", "what do I need to buy" | Turn a meal plan into a shopping list, cross-referenced against your pantry |
 | `sync-grocery-list` | "I'm done shopping", "sync the grocery list" | Post-shopping restock: sync checked items to pantry, handle staples |
 | `setup-aisles` | "set up aisles", "fix the aisles" | Bulk-assign Woodman's East aisles to the grocery list and/or pantry |

@@ -28,6 +28,7 @@ Skills live in `.claude/skills/` and are Claude Code skill files — they orches
 | `get_recipe` | Fetch full recipe by UID — includes last prepared date in the Details section |
 | `create_paprika_recipe` | Save a new recipe |
 | `update_paprika_recipe` | Update an existing recipe by UID |
+| `delete_paprika_recipe` | Move a recipe to trash by UID — full delete requires emptying trash in-app |
 
 ### Meal Plan
 
