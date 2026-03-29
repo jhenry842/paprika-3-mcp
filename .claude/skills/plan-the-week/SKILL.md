@@ -99,7 +99,9 @@ Use meal type:
 - `"lunch"` for lunches
 - `"breakfast"` for breakfasts
 
-Date format: `"YYYY-MM-DD 00:00:00"` — required by the API.
+Date format: `"YYYY-MM-DD"` — bare date, no time component.
+
+**Compute dates with arithmetic, not inference.** Monday = start_date, Tuesday = start_date+1, Wednesday = start_date+2, Thursday = start_date+3, Friday = start_date+4, Saturday = start_date+5, Sunday = start_date+6. Never infer a date from day-of-week name alone — always derive it by adding days to the confirmed start date.
 
 After adding all meals, confirm what was planned with a brief summary.
 

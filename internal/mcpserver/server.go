@@ -152,6 +152,7 @@ func (s *Server) Start() {
 		server.ServerTool{Tool: syncGroceryListToPantryTool(), Handler: s.syncGroceryListToPantry},
 		server.ServerTool{Tool: getHouseholdRulesTool(), Handler: s.getHouseholdRules},
 		server.ServerTool{Tool: setHouseholdRuleTool(), Handler: s.setHouseholdRule},
+		server.ServerTool{Tool: deleteRecipeTool(), Handler: s.deleteRecipe},
 	)
 
 	if err := server.ServeStdio(s.server); err != nil {
@@ -1427,4 +1428,37 @@ func (s *Server) setHouseholdRule(_ context.Context, req mcp.CallToolRequest) (*
 	}
 
 	return mcp.NewToolResultText(fmt.Sprintf("Rule '%s' saved.", id)), nil
+}
+
+func deleteRecipeTool() mcp.Tool {
+	return mcp.NewTool("delete_paprika_recipe",
+		mcp.WithDescription("Move a recipe to the Paprika trash by UID. The recipe can be fully deleted in-app by emptying the trash."),
+		mcp.WithString("uid",
+			mcp.Description("The UID of the recipe to delete."),
+			mcp.Required(),
+		),
+	)
+}
+
+func (s *Server) deleteRecipe(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	uid, _ := req.Params.Arguments["uid"].(string)
+	if uid == "" {
+		return mcp.NewToolResultError("uid is required"), nil
+	}
+
+	s.recipesMu.RLock()
+	recipe, ok := s.recipes[uid]
+	s.recipesMu.RUnlock()
+	if !ok {
+		return mcp.NewToolResultError(fmt.Sprintf("no recipe found with uid %q", uid)), nil
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	if _, err := s.paprika3.DeleteRecipe(ctx, *recipe); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	return mcp.NewToolResultText(fmt.Sprintf("Recipe '%s' moved to trash.", recipe.Name)), nil
 }

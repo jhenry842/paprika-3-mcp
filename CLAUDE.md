@@ -77,6 +77,7 @@ Skills live in `.claude/skills/` and are invoked by Claude Code users. Each skil
 | Skill | Trigger phrases | What it does |
 |---|---|---|
 | `plan-the-week` | "plan the week", "what should we eat" | Pantry review → meal selection → meal plan → grocery list |
+| `what-can-i-make` | "what can I make tonight?", "what can I cook?" | Match in-stock pantry → recipes; ranked by rating + recency; optional meal plan write |
 | `generate-grocery-list` | "generate grocery list", "what do I need to buy" | Turn meal plan into a shopping list, cross-referenced against pantry |
 | `sync-grocery-list` | "I'm done shopping", "sync the grocery list" | Post-shopping restock: sync checked items to pantry, uncheck staples, delete non-staples |
 | `setup-aisles` | "set up aisles", "fix the aisles" | Bulk-assign Woodman's East aisles to grocery list and/or pantry |
