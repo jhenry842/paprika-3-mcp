@@ -172,7 +172,7 @@ func (c *Client) ListRecipes(ctx context.Context) (*RecipeList, error) {
 
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode >= 400 {
 		c.logger.Error("failed to get recipes", "status", resp.Status)
 		return nil, fmt.Errorf("failed to get recipes: %s", resp.Status)
 	}
@@ -353,19 +353,7 @@ func (r *Recipe) asGzip() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	var buf bytes.Buffer
-	writer := gzip.NewWriter(&buf)
-	_, err = writer.Write(jsonBytes)
-	if err != nil {
-		writer.Close()
-		return nil, err
-	}
-	if err := writer.Close(); err != nil {
-		return nil, err
-	}
-
-	return buf.Bytes(), nil
+	return gzipBytes(jsonBytes)
 }
 
 type GetRecipeResponse struct {
@@ -387,7 +375,7 @@ func (c *Client) GetRecipe(ctx context.Context, uid string) (*Recipe, error) {
 
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode >= 400 {
 		c.logger.Error("failed to get recipe", "status", resp.Status)
 		return nil, fmt.Errorf("failed to get recipe: %s", resp.Status)
 	}
@@ -426,38 +414,23 @@ func (c *Client) SaveRecipe(ctx context.Context, recipe Recipe) (*Recipe, error)
 		return nil, err
 	}
 
-	// gzip the recipe
 	fileData, err := recipe.asGzip()
 	if err != nil {
 		return nil, err
 	}
 
-	// Create a multipart form request
-	var body bytes.Buffer
-	writer := multipart.NewWriter(&body)
-	part, err := writer.CreateFormFile("data", "data")
+	body, contentType, err := buildMultipartBody(fileData)
 	if err != nil {
-		c.logger.Error("failed to create form file", "error", err)
+		c.logger.Error("failed to build multipart body", "error", err)
 		return nil, err
 	}
 
-	// Write the gzipped JSON data to the form file
-	if _, err := part.Write(fileData); err != nil {
-		c.logger.Error("failed to write gzipped JSON data", "error", err)
-		return nil, err
-	}
-	if err := writer.Close(); err != nil {
-		c.logger.Error("failed to close multipart writer", "error", err)
-		return nil, err
-	}
-
-	// Create the HTTP request
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fmt.Sprintf("https://paprikaapp.com/api/v2/sync/recipe/%s/", recipe.UID), &body)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fmt.Sprintf("https://paprikaapp.com/api/v2/sync/recipe/%s/", recipe.UID), body)
 	if err != nil {
 		c.logger.Error("failed to create request", "error", err)
 		return nil, err
 	}
-	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.Header.Set("Content-Type", contentType)
 	req.ContentLength = int64(body.Len())
 
 	resp, err := c.client.Do(req)
@@ -467,7 +440,7 @@ func (c *Client) SaveRecipe(ctx context.Context, recipe Recipe) (*Recipe, error)
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode >= 400 {
 		c.logger.Error("failed to create recipe", "status", resp.Status)
 		return nil, fmt.Errorf("failed to create recipe: %s", resp.Status)
 	}
@@ -536,32 +509,20 @@ func (c *Client) ListGroceryItems(ctx context.Context) ([]GroceryItem, error) {
 // It follows the same gzip+multipart+Basic Auth pattern as SaveMealPlanEntry and SavePantryItem.
 func (c *Client) SaveGroceryItem(ctx context.Context, item GroceryItem) error {
 	if item.UID == "" {
-		item.UID = strings.ToUpper(uuid.New().String())
+		item.UID = newUID()
 	}
 
 	data, err := json.Marshal([]GroceryItem{item})
 	if err != nil {
 		return err
 	}
-	var buf bytes.Buffer
-	gz := gzip.NewWriter(&buf)
-	if _, err := gz.Write(data); err != nil {
-		return err
-	}
-	if err := gz.Close(); err != nil {
-		return err
-	}
-
-	body := &bytes.Buffer{}
-	writer := multipart.NewWriter(body)
-	part, err := writer.CreateFormFile("data", "data")
+	gz, err := gzipBytes(data)
 	if err != nil {
 		return err
 	}
-	if _, err := part.Write(buf.Bytes()); err != nil {
-		return err
-	}
-	if err := writer.Close(); err != nil {
+
+	body, contentType, err := buildMultipartBody(gz)
+	if err != nil {
 		return err
 	}
 
@@ -569,7 +530,7 @@ func (c *Client) SaveGroceryItem(ctx context.Context, item GroceryItem) error {
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.Header.Set("Content-Type", contentType)
 	req.SetBasicAuth(c.username, c.password)
 	req.ContentLength = int64(body.Len())
 
@@ -591,33 +552,20 @@ func (c *Client) SaveGroceryItem(ctx context.Context, item GroceryItem) error {
 // It follows the same gzip+multipart pattern as SaveRecipe.
 func (c *Client) UpdateGroceryItem(ctx context.Context, item GroceryItem) error {
 	if item.UID == "" {
-		item.UID = strings.ToUpper(uuid.New().String())
+		item.UID = newUID()
 	}
 
 	data, err := json.Marshal(item)
 	if err != nil {
 		return err
 	}
-
-	var buf bytes.Buffer
-	gz := gzip.NewWriter(&buf)
-	if _, err := gz.Write(data); err != nil {
-		return err
-	}
-	if err := gz.Close(); err != nil {
-		return err
-	}
-
-	body := &bytes.Buffer{}
-	writer := multipart.NewWriter(body)
-	part, err := writer.CreateFormFile("data", "data")
+	gz, err := gzipBytes(data)
 	if err != nil {
 		return err
 	}
-	if _, err := part.Write(buf.Bytes()); err != nil {
-		return err
-	}
-	if err := writer.Close(); err != nil {
+
+	body, contentType, err := buildMultipartBody(gz)
+	if err != nil {
 		return err
 	}
 
@@ -626,7 +574,8 @@ func (c *Client) UpdateGroceryItem(ctx context.Context, item GroceryItem) error 
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.Header.Set("Content-Type", contentType)
+	req.ContentLength = int64(body.Len())
 
 	resp, err := c.client.Do(req)
 	if err != nil {
@@ -705,7 +654,7 @@ func (c *Client) ListMealPlanEntries(ctx context.Context, start, end time.Time) 
 
 func (c *Client) SaveMealPlanEntry(ctx context.Context, entry MealPlanEntry) error {
 	if entry.UID == "" {
-		entry.UID = strings.ToUpper(uuid.New().String())
+		entry.UID = newUID()
 	}
 	entry.Deleted = false
 
@@ -714,26 +663,13 @@ func (c *Client) SaveMealPlanEntry(ctx context.Context, entry MealPlanEntry) err
 	if err != nil {
 		return err
 	}
-
-	var buf bytes.Buffer
-	gz := gzip.NewWriter(&buf)
-	if _, err := gz.Write(data); err != nil {
-		return err
-	}
-	if err := gz.Close(); err != nil {
-		return err
-	}
-
-	body := &bytes.Buffer{}
-	writer := multipart.NewWriter(body)
-	part, err := writer.CreateFormFile("data", "data")
+	gz, err := gzipBytes(data)
 	if err != nil {
 		return err
 	}
-	if _, err := part.Write(buf.Bytes()); err != nil {
-		return err
-	}
-	if err := writer.Close(); err != nil {
+
+	body, contentType, err := buildMultipartBody(gz)
+	if err != nil {
 		return err
 	}
 
@@ -742,7 +678,7 @@ func (c *Client) SaveMealPlanEntry(ctx context.Context, entry MealPlanEntry) err
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.Header.Set("Content-Type", contentType)
 	req.SetBasicAuth(c.username, c.password)
 	req.ContentLength = int64(body.Len())
 
@@ -798,7 +734,7 @@ func (c *Client) ListPantryItems(ctx context.Context) ([]PantryItem, error) {
 
 func (c *Client) SavePantryItem(ctx context.Context, item PantryItem) error {
 	if item.UID == "" {
-		item.UID = strings.ToUpper(uuid.New().String())
+		item.UID = newUID()
 	}
 	if item.PurchaseDate == "" {
 		item.PurchaseDate = time.Now().UTC().Format("2006-01-02 15:04:05")
@@ -809,26 +745,13 @@ func (c *Client) SavePantryItem(ctx context.Context, item PantryItem) error {
 	if err != nil {
 		return err
 	}
-
-	var buf bytes.Buffer
-	gz := gzip.NewWriter(&buf)
-	if _, err := gz.Write(data); err != nil {
-		return err
-	}
-	if err := gz.Close(); err != nil {
-		return err
-	}
-
-	body := &bytes.Buffer{}
-	writer := multipart.NewWriter(body)
-	part, err := writer.CreateFormFile("data", "data")
+	gz, err := gzipBytes(data)
 	if err != nil {
 		return err
 	}
-	if _, err := part.Write(buf.Bytes()); err != nil {
-		return err
-	}
-	if err := writer.Close(); err != nil {
+
+	body, contentType, err := buildMultipartBody(gz)
+	if err != nil {
 		return err
 	}
 
@@ -836,7 +759,7 @@ func (c *Client) SavePantryItem(ctx context.Context, item PantryItem) error {
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.Header.Set("Content-Type", contentType)
 	req.SetBasicAuth(c.username, c.password)
 	req.ContentLength = int64(body.Len())
 
@@ -895,4 +818,42 @@ func isErrorResponse(body []byte) error {
 	}
 
 	return nil
+}
+
+// newUID generates a new uppercase UUID for Paprika items.
+func newUID() string {
+	return strings.ToUpper(uuid.New().String())
+}
+
+// gzipBytes compresses data using gzip and returns the result.
+func gzipBytes(data []byte) ([]byte, error) {
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	if _, err := gz.Write(data); err != nil {
+		gz.Close()
+		return nil, err
+	}
+	if err := gz.Close(); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// buildMultipartBody wraps data in a multipart form with a single "data" file field,
+// matching the format expected by Paprika's sync endpoints.
+// Returns the body buffer, the Content-Type header value, and any error.
+func buildMultipartBody(data []byte) (*bytes.Buffer, string, error) {
+	var body bytes.Buffer
+	w := multipart.NewWriter(&body)
+	part, err := w.CreateFormFile("data", "data")
+	if err != nil {
+		return nil, "", err
+	}
+	if _, err := part.Write(data); err != nil {
+		return nil, "", err
+	}
+	if err := w.Close(); err != nil {
+		return nil, "", err
+	}
+	return &body, w.FormDataContentType(), nil
 }

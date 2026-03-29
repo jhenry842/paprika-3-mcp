@@ -431,6 +431,65 @@ func (s *Server) addGroceryItem(ctx context.Context, req mcp.CallToolRequest) (*
 	return mcp.NewToolResultText(fmt.Sprintf("Added '%s' to grocery list.", name)), nil
 }
 
+// aisleCandidate represents a proposed aisle change for a single item.
+type aisleCandidate struct {
+	displayName  string
+	currentAisle string
+	newAisle     string
+	apply        func(ctx context.Context) error
+}
+
+// applyAisleAssignments renders a table of proposed aisle changes and optionally commits them.
+// unknownNote is appended below the unknown-items list if non-empty.
+func (s *Server) applyAisleAssignments(
+	ctx context.Context,
+	toolName string,
+	dryRun bool,
+	proposals []aisleCandidate,
+	unknown []string,
+	unknownNote string,
+) (*mcp.CallToolResult, error) {
+	var sb strings.Builder
+	mode := "DRY RUN — no changes written"
+	if !dryRun {
+		mode = "APPLYING CHANGES"
+	}
+	sb.WriteString(fmt.Sprintf("## %s (%s)\n\n", toolName, mode))
+
+	if len(proposals) > 0 {
+		sb.WriteString("### Changes\n\n| Item | Current Aisle | → New Aisle |\n|---|---|---|\n")
+		var applyErrs []string
+		for _, p := range proposals {
+			sb.WriteString(fmt.Sprintf("| %s | %s | %s |\n", p.displayName, p.currentAisle, p.newAisle))
+			if !dryRun {
+				if err := p.apply(ctx); err != nil {
+					applyErrs = append(applyErrs, fmt.Sprintf("%s: %v", p.displayName, err))
+				}
+			}
+		}
+		if len(applyErrs) > 0 {
+			sb.WriteString("\n### Errors\n\n")
+			for _, e := range applyErrs {
+				sb.WriteString(fmt.Sprintf("- %s\n", e))
+			}
+		}
+	} else {
+		sb.WriteString("All items already have correct aisle assignments.\n")
+	}
+
+	if len(unknown) > 0 {
+		sb.WriteString("\n### Unknown items (not in aisle map — review manually)\n\n")
+		for _, u := range unknown {
+			sb.WriteString(fmt.Sprintf("- %s\n", u))
+		}
+		if unknownNote != "" {
+			sb.WriteString("\n" + unknownNote + "\n")
+		}
+	}
+
+	return mcp.NewToolResultText(sb.String()), nil
+}
+
 func setupWoodmansAislesTool() mcp.Tool {
 	return mcp.NewTool("setup_woodmans_aisles",
 		mcp.WithDescription("Map all grocery list items to their Woodman's East aisle. dry_run=true (default) shows proposed changes without writing. Set dry_run=false to commit. Items not found in the aisle map are flagged for manual review."),
@@ -451,12 +510,7 @@ func (s *Server) setupWoodmansAisles(ctx context.Context, req mcp.CallToolReques
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	type proposal struct {
-		item     paprika.GroceryItem
-		newAisle string
-	}
-
-	var proposals []proposal
+	var proposals []aisleCandidate
 	var unknown []string
 
 	for _, item := range items {
@@ -470,52 +524,25 @@ func (s *Server) setupWoodmansAisles(ctx context.Context, req mcp.CallToolReques
 			continue
 		}
 		if aisle != item.Aisle {
-			proposals = append(proposals, proposal{item: item, newAisle: aisle})
-		}
-	}
-
-	var sb strings.Builder
-	mode := "DRY RUN — no changes written"
-	if !dryRun {
-		mode = "APPLYING CHANGES"
-	}
-	sb.WriteString(fmt.Sprintf("## setup_woodmans_aisles (%s)\n\n", mode))
-
-	if len(proposals) > 0 {
-		sb.WriteString("### Changes\n\n| Item | Current Aisle | → New Aisle |\n|---|---|---|\n")
-		var applyErrs []string
-		for _, p := range proposals {
-			displayName := p.item.Name
+			captured := item
+			displayName := item.Name
 			if displayName == "" {
-				displayName = p.item.Ingredient
+				displayName = item.Ingredient
 			}
-			sb.WriteString(fmt.Sprintf("| %s | %s | %s |\n", displayName, p.item.Aisle, p.newAisle))
-			if !dryRun {
-				p.item.Aisle = p.newAisle
-				if err := s.paprika3.UpdateGroceryItem(ctx, p.item); err != nil {
-					applyErrs = append(applyErrs, fmt.Sprintf("%s: %v", displayName, err))
-				}
-			}
+			proposals = append(proposals, aisleCandidate{
+				displayName:  displayName,
+				currentAisle: item.Aisle,
+				newAisle:     aisle,
+				apply: func(ctx context.Context) error {
+					captured.Aisle = aisle
+					return s.paprika3.UpdateGroceryItem(ctx, captured)
+				},
+			})
 		}
-		if len(applyErrs) > 0 {
-			sb.WriteString("\n### Errors\n\n")
-			for _, e := range applyErrs {
-				sb.WriteString(fmt.Sprintf("- ⚠️ %s\n", e))
-			}
-		}
-	} else {
-		sb.WriteString("All items already have correct aisle assignments.\n")
 	}
 
-	if len(unknown) > 0 {
-		sb.WriteString("\n### Unknown items (not in aisle map — review and add manually)\n\n")
-		for _, u := range unknown {
-			sb.WriteString(fmt.Sprintf("- %s\n", u))
-		}
-		sb.WriteString("\nTo add them: update `aisles/woodmans_east.json` and re-run.\n")
-	}
-
-	return mcp.NewToolResultText(sb.String()), nil
+	return s.applyAisleAssignments(ctx, "setup_woodmans_aisles", dryRun, proposals, unknown,
+		"To add them: update `aisles/woodmans_east.json` and re-run.")
 }
 
 func setupPantryAislesTool() mcp.Tool {
@@ -538,12 +565,7 @@ func (s *Server) setupPantryAisles(ctx context.Context, req mcp.CallToolRequest)
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	type proposal struct {
-		item     paprika.PantryItem
-		newAisle string
-	}
-
-	var proposals []proposal
+	var proposals []aisleCandidate
 	var unknown []string
 
 	for _, item := range items {
@@ -553,47 +575,20 @@ func (s *Server) setupPantryAisles(ctx context.Context, req mcp.CallToolRequest)
 			continue
 		}
 		if aisle != item.Aisle {
-			proposals = append(proposals, proposal{item: item, newAisle: aisle})
+			captured := item
+			proposals = append(proposals, aisleCandidate{
+				displayName:  item.Ingredient,
+				currentAisle: item.Aisle,
+				newAisle:     aisle,
+				apply: func(ctx context.Context) error {
+					captured.Aisle = aisle
+					return s.paprika3.SavePantryItem(ctx, captured)
+				},
+			})
 		}
 	}
 
-	var sb strings.Builder
-	mode := "DRY RUN — no changes written"
-	if !dryRun {
-		mode = "APPLYING CHANGES"
-	}
-	sb.WriteString(fmt.Sprintf("## setup_pantry_aisles (%s)\n\n", mode))
-
-	if len(proposals) > 0 {
-		sb.WriteString("### Changes\n\n| Item | Current Aisle | → New Aisle |\n|---|---|---|\n")
-		var applyErrs []string
-		for _, p := range proposals {
-			sb.WriteString(fmt.Sprintf("| %s | %s | %s |\n", p.item.Ingredient, p.item.Aisle, p.newAisle))
-			if !dryRun {
-				p.item.Aisle = p.newAisle
-				if err := s.paprika3.SavePantryItem(ctx, p.item); err != nil {
-					applyErrs = append(applyErrs, fmt.Sprintf("%s: %v", p.item.Ingredient, err))
-				}
-			}
-		}
-		if len(applyErrs) > 0 {
-			sb.WriteString("\n### Errors\n\n")
-			for _, e := range applyErrs {
-				sb.WriteString(fmt.Sprintf("- %s\n", e))
-			}
-		}
-	} else {
-		sb.WriteString("All pantry items already have correct aisle assignments.\n")
-	}
-
-	if len(unknown) > 0 {
-		sb.WriteString("\n### Unknown items (not in aisle map — review manually)\n\n")
-		for _, u := range unknown {
-			sb.WriteString(fmt.Sprintf("- %s\n", u))
-		}
-	}
-
-	return mcp.NewToolResultText(sb.String()), nil
+	return s.applyAisleAssignments(ctx, "setup_pantry_aisles", dryRun, proposals, unknown, "")
 }
 
 func (s *Server) updateRecipe(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
