@@ -395,6 +395,26 @@ func (c *Client) GetRecipe(ctx context.Context, uid string) (*Recipe, error) {
 	return &recipeResp.Result, nil
 }
 
+// GetRecipeRaw fetches the raw JSON bytes for a recipe — used to discover all API fields.
+func (c *Client) GetRecipeRaw(ctx context.Context, uid string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("https://paprikaapp.com/api/v2/sync/recipe/%s/", uid), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("failed to get recipe: %s", resp.Status)
+	}
+
+	return io.ReadAll(resp.Body)
+}
+
 func (c *Client) DeleteRecipe(ctx context.Context, recipe Recipe) (*Recipe, error) {
 	// Set the recipe to be in the trash
 	// TODO: reverse-engineer full deletions; currently a user must go in-app to empty their trash and fully delete something
@@ -696,6 +716,47 @@ func (c *Client) ListMealPlanEntries(ctx context.Context, start, end time.Time) 
 		}
 	}
 	return filtered, nil
+}
+
+// DeleteMealPlanEntry soft-deletes a meal plan entry by setting deleted=true and POSTing
+// to the V1 sync endpoint. This follows the same pattern as DeleteGroceryItem.
+func (c *Client) DeleteMealPlanEntry(ctx context.Context, entry MealPlanEntry) error {
+	entry.Deleted = true
+
+	data, err := json.Marshal([]MealPlanEntry{entry})
+	if err != nil {
+		return err
+	}
+	gz, err := gzipBytes(data)
+	if err != nil {
+		return err
+	}
+
+	body, contentType, err := buildMultipartBody(gz)
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://paprikaapp.com/api/v1/sync/meals/", body)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", contentType)
+	req.SetBasicAuth(c.username, c.password)
+	req.ContentLength = int64(body.Len())
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		b, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("paprika API error %d: %s", resp.StatusCode, b)
+	}
+
+	return c.notify(ctx)
 }
 
 func (c *Client) SaveMealPlanEntry(ctx context.Context, entry MealPlanEntry) error {

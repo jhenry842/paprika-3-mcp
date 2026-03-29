@@ -1,6 +1,7 @@
 package paprika_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -264,6 +265,82 @@ func TestPantryClient(t *testing.T) {
 	// No DeletePantryItem exists — test item persists in pantry.
 	// Remove manually from the app after running, or add DeletePantryItem if cleanup becomes painful.
 	t.Logf("Note: test pantry item left in place (no delete method): %s", found.UID)
+}
+
+func TestDeleteMealPlanEntry(t *testing.T) {
+	username := os.Getenv("PAPRIKA_USERNAME")
+	password := os.Getenv("PAPRIKA_PASSWORD")
+	if username == "" || password == "" {
+		t.Skip("PAPRIKA_USERNAME and PAPRIKA_PASSWORD not set")
+	}
+
+	client, err := paprika.NewClient(username, password, "dev", nil)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+
+	// Add a test meal plan entry for today
+	today := time.Now().Format("2006-01-02") + " 00:00:00"
+	entry := paprika.MealPlanEntry{
+		RecipeName: "Test Meal Plan Entry (DELETE ME)",
+		Date:       today,
+		MealType:   paprika.MealTypeDinner,
+	}
+	require.NoError(t, client.SaveMealPlanEntry(ctx, entry))
+
+	// Fetch to get the assigned UID
+	start := time.Now().Truncate(24 * time.Hour)
+	end := start.Add(24 * time.Hour)
+	entries, err := client.ListMealPlanEntries(ctx, start, end)
+	require.NoError(t, err)
+	var saved *paprika.MealPlanEntry
+	for i := range entries {
+		if entries[i].RecipeName == entry.RecipeName {
+			saved = &entries[i]
+			break
+		}
+	}
+	require.NotNil(t, saved, "saved meal plan entry not found in list")
+	t.Logf("Created meal plan entry: %s (UID: %s)", saved.RecipeName, saved.UID)
+
+	// Delete it using the soft-delete pattern
+	require.NoError(t, client.DeleteMealPlanEntry(ctx, *saved))
+
+	// Verify it's gone from the list
+	entries, err = client.ListMealPlanEntries(ctx, start, end)
+	require.NoError(t, err)
+	for _, e := range entries {
+		if e.UID == saved.UID {
+			t.Errorf("deleted meal plan entry still present in list: %s", e.UID)
+		}
+	}
+	t.Log("Meal plan entry successfully deleted")
+}
+
+func TestRecipeRawFields(t *testing.T) {
+	username := os.Getenv("PAPRIKA_USERNAME")
+	password := os.Getenv("PAPRIKA_PASSWORD")
+	if username == "" || password == "" {
+		t.Skip("PAPRIKA_USERNAME and PAPRIKA_PASSWORD not set")
+	}
+
+	client, err := paprika.NewClient(username, password, "dev", nil)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	// Dump raw fields of the first recipe to discover all available API fields
+	recipes, err := client.ListRecipes(ctx)
+	require.NoError(t, err)
+	require.NotEmpty(t, recipes.Result, "no recipes found — need at least one to inspect")
+
+	raw, err := client.GetRecipeRaw(ctx, recipes.Result[0].UID)
+	require.NoError(t, err)
+
+	var pretty bytes.Buffer
+	require.NoError(t, json.Indent(&pretty, raw, "", "  "))
+	t.Logf("Raw recipe fields:\n%s", pretty.String())
 }
 
 func TestClient(t *testing.T) {

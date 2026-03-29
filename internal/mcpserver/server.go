@@ -145,6 +145,7 @@ func (s *Server) Start() {
 		server.ServerTool{Tool: addPantryItemTool(), Handler: s.addPantryItem},
 		server.ServerTool{Tool: updatePantryItemTool(), Handler: s.updatePantryItem},
 		server.ServerTool{Tool: setupPantryAislesTool(), Handler: s.setupPantryAisles},
+		server.ServerTool{Tool: removeMealFromPlanTool(), Handler: s.removeMealFromPlan},
 		server.ServerTool{Tool: addGroceryItemTool(), Handler: s.addGroceryItem},
 		server.ServerTool{Tool: uncheckGroceryItemsTool(), Handler: s.uncheckGroceryItems},
 		server.ServerTool{Tool: deleteGroceryItemsTool(), Handler: s.deleteGroceryItems},
@@ -825,6 +826,49 @@ func (s *Server) addMealToPlan(ctx context.Context, req mcp.CallToolRequest) (*m
 	return mcp.NewToolResultText(fmt.Sprintf(
 		"Added recipe to %s on %s.", mealTypeStr, dateStr,
 	)), nil
+}
+
+func removeMealFromPlanTool() mcp.Tool {
+	return mcp.NewTool("remove_meal_from_plan",
+		mcp.WithDescription("Remove a meal from the plan by its UID. Use get_meal_plan to find the entry UID."),
+		mcp.WithString("uid",
+			mcp.Description("UID of the meal plan entry to remove."),
+			mcp.Required(),
+		),
+	)
+}
+
+func (s *Server) removeMealFromPlan(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	uid, _ := req.Params.Arguments["uid"].(string)
+	if uid == "" {
+		return mcp.NewToolResultError("uid is required"), nil
+	}
+
+	// Look up the entry across a wide window so we can confirm it exists
+	// and get its full fields (date, type, recipe_uid) for the soft-delete payload.
+	start := time.Now().AddDate(0, -1, 0)
+	end := time.Now().AddDate(0, 1, 0)
+	entries, err := s.paprika3.ListMealPlanEntries(ctx, start, end)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	var target *paprika.MealPlanEntry
+	for i := range entries {
+		if entries[i].UID == uid {
+			target = &entries[i]
+			break
+		}
+	}
+	if target == nil {
+		return mcp.NewToolResultError(fmt.Sprintf("meal plan entry %s not found", uid)), nil
+	}
+
+	if err := s.paprika3.DeleteMealPlanEntry(ctx, *target); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	return mcp.NewToolResultText(fmt.Sprintf("Removed %q from meal plan.", target.RecipeName)), nil
 }
 
 func listRecipesTool() mcp.Tool {
