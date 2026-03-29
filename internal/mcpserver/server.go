@@ -313,7 +313,7 @@ func (s *Server) getGroceryList(ctx context.Context, req mcp.CallToolRequest) (*
 
 	var sb strings.Builder
 	sb.WriteString("## Grocery List\n\n")
-	sb.WriteString("| Item | Aisle | Checked |\n|---|---|---|\n")
+	sb.WriteString("| Item | UID | Aisle | Checked |\n|---|---|---|---|\n")
 	for _, item := range items {
 		name := item.Name
 		if name == "" {
@@ -323,7 +323,7 @@ func (s *Server) getGroceryList(ctx context.Context, req mcp.CallToolRequest) (*
 		if item.Purchased {
 			checked = "x"
 		}
-		sb.WriteString(fmt.Sprintf("| %s | %s | [%s] |\n", name, item.Aisle, checked))
+		sb.WriteString(fmt.Sprintf("| %s | %s | %s | [%s] |\n", name, item.UID, item.Aisle, checked))
 	}
 
 	return mcp.NewToolResultText(sb.String()), nil
