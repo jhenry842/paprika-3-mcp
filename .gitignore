@@ -32,4 +32,4 @@ go.work.sum
 .claude/memory/
 .claude/settings.local.json
 docs/superpowers/
-paprika-3-mcp
+/paprika-3-mcp
