@@ -595,6 +595,14 @@ func (s *Server) setupPantryAisles(ctx context.Context, req mcp.CallToolRequest)
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
+	// Build aisle name → aisle_uid map from existing items that already have UIDs.
+	aisleUIDs := make(map[string]string)
+	for _, item := range items {
+		if item.Aisle != "" && item.AisleUID != "" {
+			aisleUIDs[item.Aisle] = item.AisleUID
+		}
+	}
+
 	var proposals []aisleCandidate
 	var unknown []string
 
@@ -606,12 +614,14 @@ func (s *Server) setupPantryAisles(ctx context.Context, req mcp.CallToolRequest)
 		}
 		if aisle != item.Aisle {
 			captured := item
+			aisleUID := aisleUIDs[aisle]
 			proposals = append(proposals, aisleCandidate{
 				displayName:  item.Ingredient,
 				currentAisle: item.Aisle,
 				newAisle:     aisle,
 				apply: func(ctx context.Context) error {
 					captured.Aisle = aisle
+					captured.AisleUID = aisleUID
 					return s.paprika3.SavePantryItem(ctx, captured)
 				},
 			})
@@ -988,13 +998,13 @@ func (s *Server) getPantry(ctx context.Context, _ mcp.CallToolRequest) (*mcp.Cal
 
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("## Pantry (%d items)\n\n", len(items)))
-	sb.WriteString("| Item | Quantity | In Stock |\n|---|---|---|\n")
+	sb.WriteString("| Item | Quantity | Aisle | In Stock |\n|---|---|---|---|\n")
 	for _, item := range items {
 		inStock := "no"
 		if item.InStock {
 			inStock = "yes"
 		}
-		sb.WriteString(fmt.Sprintf("| %s | %s | %s |\n", item.Ingredient, item.Quantity, inStock))
+		sb.WriteString(fmt.Sprintf("| %s | %s | %s | %s |\n", item.Ingredient, item.Quantity, item.Aisle, inStock))
 	}
 	return mcp.NewToolResultText(sb.String()), nil
 }

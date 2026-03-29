@@ -866,6 +866,7 @@ type PantryItem struct {
 	Ingredient    string  `json:"ingredient"`
 	Quantity      string  `json:"quantity"`
 	Aisle         string  `json:"aisle"`
+	AisleUID      string  `json:"aisle_uid,omitempty"`
 	InStock       bool    `json:"in_stock"`
 	PurchaseDate  string  `json:"purchase_date"`
 	ExpirationDate *string `json:"expiration_date"`
