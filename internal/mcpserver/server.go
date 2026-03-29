@@ -1126,7 +1126,13 @@ func uncheckGroceryItemsTool() mcp.Tool {
 func (s *Server) uncheckGroceryItems(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	rawUIDs, ok := req.Params.Arguments["uids"].([]interface{})
 	if !ok {
-		return mcp.NewToolResultError("uids must be an array"), nil
+		if s, ok2 := req.Params.Arguments["uids"].(string); ok2 {
+			if err := json.Unmarshal([]byte(s), &rawUIDs); err != nil {
+				return mcp.NewToolResultError("uids must be an array"), nil
+			}
+		} else {
+			return mcp.NewToolResultError("uids must be an array"), nil
+		}
 	}
 
 	existing, err := s.paprika3.ListGroceryItems(ctx)
@@ -1178,7 +1184,13 @@ func deleteGroceryItemsTool() mcp.Tool {
 func (s *Server) deleteGroceryItems(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	rawUIDs, ok := req.Params.Arguments["uids"].([]interface{})
 	if !ok {
-		return mcp.NewToolResultError("uids must be an array"), nil
+		if s, ok2 := req.Params.Arguments["uids"].(string); ok2 {
+			if err := json.Unmarshal([]byte(s), &rawUIDs); err != nil {
+				return mcp.NewToolResultError("uids must be an array"), nil
+			}
+		} else {
+			return mcp.NewToolResultError("uids must be an array"), nil
+		}
 	}
 
 	existing, err := s.paprika3.ListGroceryItems(ctx)
