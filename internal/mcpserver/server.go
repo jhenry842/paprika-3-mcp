@@ -131,6 +131,7 @@ func (s *Server) Start() {
 		server.ServerTool{Tool: getPantryTool(), Handler: s.getPantry},
 		server.ServerTool{Tool: addPantryItemTool(), Handler: s.addPantryItem},
 		server.ServerTool{Tool: updatePantryItemTool(), Handler: s.updatePantryItem},
+		server.ServerTool{Tool: setupPantryAislesTool(), Handler: s.setupPantryAisles},
 		server.ServerTool{Tool: addGroceryItemTool(), Handler: s.addGroceryItem},
 	)
 
@@ -517,6 +518,84 @@ func (s *Server) setupWoodmansAisles(ctx context.Context, req mcp.CallToolReques
 	return mcp.NewToolResultText(sb.String()), nil
 }
 
+func setupPantryAislesTool() mcp.Tool {
+	return mcp.NewTool("setup_pantry_aisles",
+		mcp.WithDescription("Map all pantry items to their aisle using the aisle map. dry_run=true (default) shows proposed changes without writing. Set dry_run=false to commit. Items not found in the aisle map are flagged for manual review."),
+		mcp.WithBoolean("dry_run",
+			mcp.Description("If true (default), return proposed changes without writing to Paprika."),
+		),
+	)
+}
+
+func (s *Server) setupPantryAisles(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	dryRun := true
+	if v, ok := req.Params.Arguments["dry_run"].(bool); ok {
+		dryRun = v
+	}
+
+	items, err := s.paprika3.ListPantryItems(ctx)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	type proposal struct {
+		item     paprika.PantryItem
+		newAisle string
+	}
+
+	var proposals []proposal
+	var unknown []string
+
+	for _, item := range items {
+		aisle, found := s.aisleMap.Lookup(item.Ingredient)
+		if !found {
+			unknown = append(unknown, item.Ingredient)
+			continue
+		}
+		if aisle != item.Aisle {
+			proposals = append(proposals, proposal{item: item, newAisle: aisle})
+		}
+	}
+
+	var sb strings.Builder
+	mode := "DRY RUN — no changes written"
+	if !dryRun {
+		mode = "APPLYING CHANGES"
+	}
+	sb.WriteString(fmt.Sprintf("## setup_pantry_aisles (%s)\n\n", mode))
+
+	if len(proposals) > 0 {
+		sb.WriteString("### Changes\n\n| Item | Current Aisle | → New Aisle |\n|---|---|---|\n")
+		var applyErrs []string
+		for _, p := range proposals {
+			sb.WriteString(fmt.Sprintf("| %s | %s | %s |\n", p.item.Ingredient, p.item.Aisle, p.newAisle))
+			if !dryRun {
+				p.item.Aisle = p.newAisle
+				if err := s.paprika3.SavePantryItem(ctx, p.item); err != nil {
+					applyErrs = append(applyErrs, fmt.Sprintf("%s: %v", p.item.Ingredient, err))
+				}
+			}
+		}
+		if len(applyErrs) > 0 {
+			sb.WriteString("\n### Errors\n\n")
+			for _, e := range applyErrs {
+				sb.WriteString(fmt.Sprintf("- %s\n", e))
+			}
+		}
+	} else {
+		sb.WriteString("All pantry items already have correct aisle assignments.\n")
+	}
+
+	if len(unknown) > 0 {
+		sb.WriteString("\n### Unknown items (not in aisle map — review manually)\n\n")
+		for _, u := range unknown {
+			sb.WriteString(fmt.Sprintf("- %s\n", u))
+		}
+	}
+
+	return mcp.NewToolResultText(sb.String()), nil
+}
+
 func (s *Server) updateRecipe(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	start := time.Now()
 	uid, ok := req.Params.Arguments["uid"].(string)
@@ -854,10 +933,13 @@ func (s *Server) addPantryItem(ctx context.Context, req mcp.CallToolRequest) (*m
 		inStock = v
 	}
 
+	aisle, _ := s.aisleMap.Lookup(ingredient)
+
 	item := paprika.PantryItem{
 		Ingredient: ingredient,
 		Quantity:   quantity,
 		InStock:    inStock,
+		Aisle:      aisle,
 	}
 	if err := s.paprika3.SavePantryItem(ctx, item); err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
