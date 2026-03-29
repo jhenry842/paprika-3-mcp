@@ -24,7 +24,7 @@ type: project
 | 12 | Skill layer: `sync-grocery-list` + `setup-aisles` skills | 1a0c9ea |
 | 13 | Test suite + `UpdateGroceryItem` bug fix (14 tests) | f2d63b6 |
 | 20b | Staple items: `uncheck_grocery_items`, `delete_grocery_items`, staple rule type | 1a0c9ea |
-| 18 | `remove_meal_from_plan` — soft-delete via `deleted=true` on V1 sync endpoint | TBD |
+| 18 | `remove_meal_from_plan` — soft-delete via `deleted=true` on V1 sync endpoint | 4967c6e |
 | — | Security: scrub credentials from repo history, use `~/.paprika-env` | 1d82d5b |
 
 ---
