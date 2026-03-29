@@ -747,13 +747,13 @@ func (s *Server) getMealPlan(ctx context.Context, req mcp.CallToolRequest) (*mcp
 	if len(entries) == 0 {
 		sb.WriteString("No meals planned for this period.\n")
 	} else {
-		sb.WriteString("| Date | Meal | Recipe |\n|---|---|---|\n")
+		sb.WriteString("| Date | Meal | Recipe | Entry UID |\n|---|---|---|---|\n")
 		for _, e := range entries {
-				displayDate := e.Date
+			displayDate := e.Date
 			if len(displayDate) > 10 {
 				displayDate = displayDate[:10]
 			}
-			sb.WriteString(fmt.Sprintf("| %s | %s | %s |\n", displayDate, mealTypeName[e.MealType], e.RecipeName))
+			sb.WriteString(fmt.Sprintf("| %s | %s | %s | %s |\n", displayDate, mealTypeName[e.MealType], e.RecipeUID, e.UID))
 		}
 	}
 
