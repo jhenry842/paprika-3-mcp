@@ -146,6 +146,8 @@ func (s *Server) Start() {
 		server.ServerTool{Tool: updatePantryItemTool(), Handler: s.updatePantryItem},
 		server.ServerTool{Tool: setupPantryAislesTool(), Handler: s.setupPantryAisles},
 		server.ServerTool{Tool: addGroceryItemTool(), Handler: s.addGroceryItem},
+		server.ServerTool{Tool: uncheckGroceryItemsTool(), Handler: s.uncheckGroceryItems},
+		server.ServerTool{Tool: deleteGroceryItemsTool(), Handler: s.deleteGroceryItems},
 		server.ServerTool{Tool: syncGroceryListToPantryTool(), Handler: s.syncGroceryListToPantry},
 		server.ServerTool{Tool: getHouseholdRulesTool(), Handler: s.getHouseholdRules},
 		server.ServerTool{Tool: setHouseholdRuleTool(), Handler: s.setHouseholdRule},
@@ -1006,9 +1008,112 @@ func (s *Server) updatePantryItem(ctx context.Context, req mcp.CallToolRequest) 
 	return mcp.NewToolResultText(fmt.Sprintf("Updated %s: %s, %s.", target.Ingredient, target.Quantity, inStock)), nil
 }
 
+func uncheckGroceryItemsTool() mcp.Tool {
+	return mcp.NewTool("uncheck_grocery_items",
+		mcp.WithDescription("Set purchased=false on one or more grocery items by UID, keeping them on the grocery list for the next shopping trip. Use for staple items that should remain on the list after syncing to the pantry."),
+		mcp.WithArray("uids",
+			mcp.Description("Array of grocery item UIDs to uncheck."),
+			mcp.Required(),
+		),
+	)
+}
+
+func (s *Server) uncheckGroceryItems(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	rawUIDs, ok := req.Params.Arguments["uids"].([]interface{})
+	if !ok {
+		return mcp.NewToolResultError("uids must be an array"), nil
+	}
+
+	existing, err := s.paprika3.ListGroceryItems(ctx)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	byUID := make(map[string]paprika.GroceryItem, len(existing))
+	for _, item := range existing {
+		byUID[item.UID] = item
+	}
+
+	var unchecked, errs []string
+	for _, raw := range rawUIDs {
+		uid, _ := raw.(string)
+		if uid == "" {
+			errs = append(errs, "skipped empty UID")
+			continue
+		}
+		item, exists := byUID[uid]
+		if !exists {
+			errs = append(errs, fmt.Sprintf("uid not found: %s", uid))
+			continue
+		}
+		item.Purchased = false
+		if err := s.paprika3.UpdateGroceryItem(ctx, item); err != nil {
+			errs = append(errs, fmt.Sprintf("failed to uncheck %s: %v", item.Ingredient, err))
+			continue
+		}
+		unchecked = append(unchecked, item.Ingredient)
+	}
+
+	msg := fmt.Sprintf("Unchecked %d item(s).", len(unchecked))
+	if len(errs) > 0 {
+		msg += "\nErrors:\n- " + strings.Join(errs, "\n- ")
+	}
+	return mcp.NewToolResultText(msg), nil
+}
+
+func deleteGroceryItemsTool() mcp.Tool {
+	return mcp.NewTool("delete_grocery_items",
+		mcp.WithDescription("Remove one or more grocery items from the list by UID. Use for non-staple items after syncing them to the pantry."),
+		mcp.WithArray("uids",
+			mcp.Description("Array of grocery item UIDs to delete."),
+			mcp.Required(),
+		),
+	)
+}
+
+func (s *Server) deleteGroceryItems(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	rawUIDs, ok := req.Params.Arguments["uids"].([]interface{})
+	if !ok {
+		return mcp.NewToolResultError("uids must be an array"), nil
+	}
+
+	existing, err := s.paprika3.ListGroceryItems(ctx)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	byUID := make(map[string]paprika.GroceryItem, len(existing))
+	for _, item := range existing {
+		byUID[item.UID] = item
+	}
+
+	var deleted, errs []string
+	for _, raw := range rawUIDs {
+		uid, _ := raw.(string)
+		if uid == "" {
+			errs = append(errs, "skipped empty UID")
+			continue
+		}
+		item, exists := byUID[uid]
+		if !exists {
+			errs = append(errs, fmt.Sprintf("uid not found: %s", uid))
+			continue
+		}
+		if err := s.paprika3.DeleteGroceryItem(ctx, item); err != nil {
+			errs = append(errs, fmt.Sprintf("failed to delete %s: %v", item.Ingredient, err))
+			continue
+		}
+		deleted = append(deleted, item.Ingredient)
+	}
+
+	msg := fmt.Sprintf("Deleted %d item(s).", len(deleted))
+	if len(errs) > 0 {
+		msg += "\nErrors:\n- " + strings.Join(errs, "\n- ")
+	}
+	return mcp.NewToolResultText(msg), nil
+}
+
 func syncGroceryListToPantryTool() mcp.Tool {
 	return mcp.NewTool("sync_grocery_list_to_pantry",
-		mcp.WithDescription("Move all checked (purchased) grocery items into the pantry and remove them from the grocery list. Items already in the pantry are updated to in_stock=true with the grocery item's quantity. Use this after checking off items at the store."),
+		mcp.WithDescription("DEPRECATED: use the sync-grocery-list skill instead, which handles staple items correctly. Legacy: move all checked grocery items into the pantry and remove them from the grocery list."),
 	)
 }
 

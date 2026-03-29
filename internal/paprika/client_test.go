@@ -135,6 +135,72 @@ func TestSaveAndDeleteGroceryItem(t *testing.T) {
 	}
 }
 
+func TestUncheckGroceryItem(t *testing.T) {
+	username := os.Getenv("PAPRIKA_USERNAME")
+	password := os.Getenv("PAPRIKA_PASSWORD")
+	if username == "" || password == "" {
+		t.Skip("PAPRIKA_USERNAME and PAPRIKA_PASSWORD not set")
+	}
+
+	client, err := paprika.NewClient(username, password, "dev", nil)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+
+	existing, err := client.ListGroceryItems(ctx)
+	require.NoError(t, err)
+	var listUID string
+	for _, item := range existing {
+		if item.ListUID != "" {
+			listUID = item.ListUID
+			break
+		}
+	}
+
+	// Create item with purchased=true
+	testItem := paprika.GroceryItem{
+		Name:       fmt.Sprintf("Test Staple %d", time.Now().Unix()),
+		Ingredient: fmt.Sprintf("test staple %d", time.Now().Unix()),
+		Quantity:   "1 bunch",
+		ListUID:    listUID,
+		Purchased:  true,
+	}
+	require.NoError(t, client.SaveGroceryItem(ctx, testItem))
+
+	// Fetch to get the assigned UID
+	items, err := client.ListGroceryItems(ctx)
+	require.NoError(t, err)
+	var found *paprika.GroceryItem
+	for i := range items {
+		if items[i].Ingredient == testItem.Ingredient {
+			found = &items[i]
+			break
+		}
+	}
+	require.NotNil(t, found, "saved grocery item not found")
+	assert.True(t, found.Purchased, "item should be purchased=true after save")
+
+	// Uncheck it
+	found.Purchased = false
+	require.NoError(t, client.UpdateGroceryItem(ctx, *found))
+
+	// Verify it's still on the list but unchecked
+	items, err = client.ListGroceryItems(ctx)
+	require.NoError(t, err)
+	var unchecked *paprika.GroceryItem
+	for i := range items {
+		if items[i].UID == found.UID {
+			unchecked = &items[i]
+			break
+		}
+	}
+	require.NotNil(t, unchecked, "item should still be on grocery list after uncheck")
+	assert.False(t, unchecked.Purchased, "item should be purchased=false after uncheck")
+
+	// Cleanup
+	require.NoError(t, client.DeleteGroceryItem(ctx, *unchecked))
+}
+
 func TestPantryClient(t *testing.T) {
 	username := os.Getenv("PAPRIKA_USERNAME")
 	password := os.Getenv("PAPRIKA_PASSWORD")

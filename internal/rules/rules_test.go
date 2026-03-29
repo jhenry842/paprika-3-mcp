@@ -70,6 +70,27 @@ func TestToMarkdownEmpty(t *testing.T) {
 	assert.Equal(t, "No household rules configured.", r.ToMarkdown())
 }
 
+func TestStapleRuleRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "rules.json")
+
+	original := rules.Rules{
+		{
+			ID:          "staple-apples",
+			Type:        "staple",
+			Description: "Apples are a weekly staple — keep on grocery list after shopping",
+			Params:      map[string]any{"ingredient": "apples"},
+		},
+	}
+	require.NoError(t, original.Save(path))
+
+	loaded, err := rules.Load(path)
+	require.NoError(t, err)
+	require.Len(t, loaded, 1)
+	assert.Equal(t, "staple", loaded[0].Type)
+	assert.Equal(t, "apples", loaded[0].Params["ingredient"])
+}
+
 func TestToMarkdownContainsRuleID(t *testing.T) {
 	r := rules.Rules{
 		{ID: "double-proteins", Type: "quantity_multiplier", Description: "Buy double proteins"},
