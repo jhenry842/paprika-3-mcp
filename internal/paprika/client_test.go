@@ -1,11 +1,11 @@
 package paprika_test
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -327,20 +327,192 @@ func TestRecipeRawFields(t *testing.T) {
 	client, err := paprika.NewClient(username, password, "dev", nil)
 	require.NoError(t, err)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	// Dump raw fields of the first recipe to discover all available API fields
 	recipes, err := client.ListRecipes(ctx)
 	require.NoError(t, err)
 	require.NotEmpty(t, recipes.Result, "no recipes found — need at least one to inspect")
 
-	raw, err := client.GetRecipeRaw(ctx, recipes.Result[0].UID)
+	// Known fields already mapped in the Recipe struct.
+	knownFields := map[string]bool{
+		"uid": true, "name": true, "ingredients": true, "directions": true,
+		"description": true, "notes": true, "nutritional_info": true, "servings": true,
+		"difficulty": true, "prep_time": true, "cook_time": true, "total_time": true,
+		"source": true, "source_url": true, "image_url": true, "photo": true,
+		"photo_hash": true, "photo_large": true, "scale": true, "hash": true,
+		"categories": true, "rating": true, "in_trash": true, "is_pinned": true,
+		"on_favorites": true, "on_grocery_list": true, "created": true, "photo_url": true,
+	}
+
+	unknownFields := map[string]interface{}{}
+
+	// Scan all recipes for any field not in knownFields, or any field with "cook",
+	// "prepared", "last", "history", or "date" in its name.
+	t.Logf("Scanning %d recipes for unknown/cook-related fields...", len(recipes.Result))
+	for _, r := range recipes.Result {
+		raw, err := client.GetRecipeRaw(ctx, r.UID)
+		if err != nil {
+			t.Logf("  skip %s: %v", r.UID, err)
+			continue
+		}
+
+		var wrapper struct {
+			Result map[string]interface{} `json:"result"`
+		}
+		if err := json.Unmarshal(raw, &wrapper); err != nil {
+			continue
+		}
+
+		for k, v := range wrapper.Result {
+			if !knownFields[k] {
+				if _, seen := unknownFields[k]; !seen {
+					unknownFields[k] = v
+					t.Logf("  UNKNOWN FIELD %q = %v (recipe %s)", k, v, r.UID)
+				} else if v != nil && unknownFields[k] == nil {
+					// Update to a non-nil value if we found one
+					unknownFields[k] = v
+					t.Logf("  UNKNOWN FIELD %q = %v (non-nil, recipe %s)", k, v, r.UID)
+				}
+			}
+			// Also flag known fields that contain cook/prepared/last/date/history
+			name := strings.ToLower(k)
+			if strings.Contains(name, "cook") || strings.Contains(name, "prepared") ||
+				strings.Contains(name, "last") || strings.Contains(name, "history") {
+				t.Logf("  COOK-RELATED FIELD %q = %v", k, v)
+			}
+		}
+	}
+
+	if len(unknownFields) == 0 {
+		t.Log("No unknown fields found across all recipes.")
+	} else {
+		t.Logf("Found %d unknown field(s) total.", len(unknownFields))
+	}
+}
+
+func TestProbeHistoryEndpoints(t *testing.T) {
+	username := os.Getenv("PAPRIKA_USERNAME")
+	password := os.Getenv("PAPRIKA_PASSWORD")
+	if username == "" || password == "" {
+		t.Skip("PAPRIKA_USERNAME and PAPRIKA_PASSWORD not set")
+	}
+
+	client, err := paprika.NewClient(username, password, "dev", nil)
 	require.NoError(t, err)
 
-	var pretty bytes.Buffer
-	require.NoError(t, json.Indent(&pretty, raw, "", "  "))
-	t.Logf("Raw recipe fields:\n%s", pretty.String())
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	candidates := []string{
+		// History / cook log guesses
+		"https://paprikaapp.com/api/v2/sync/history/",
+		"https://paprikaapp.com/api/v1/sync/history/",
+		"https://paprikaapp.com/api/v2/sync/cookhistory/",
+		"https://paprikaapp.com/api/v2/sync/cooked/",
+		"https://paprikaapp.com/api/v2/sync/logs/",
+		"https://paprikaapp.com/api/v2/sync/timeline/",
+		"https://paprikaapp.com/api/v2/sync/activity/",
+		// More candidates
+		"https://paprikaapp.com/api/v2/sync/cooklogs/",
+		"https://paprikaapp.com/api/v2/sync/made/",
+		"https://paprikaapp.com/api/v2/sync/prepared/",
+		"https://paprikaapp.com/api/v2/sync/diary/",
+		"https://paprikaapp.com/api/v2/sync/journal/",
+		"https://paprikaapp.com/api/v1/sync/cooklogs/",
+		"https://paprikaapp.com/api/v1/sync/made/",
+		"https://paprikaapp.com/api/v1/sync/prepared/",
+	}
+
+	for _, url := range candidates {
+		status, body, err := client.ProbeEndpoint(ctx, url)
+		if err != nil {
+			t.Logf("  %s → error: %v", url, err)
+			continue
+		}
+		preview := string(body)
+		if len(preview) > 200 {
+			preview = preview[:200] + "..."
+		}
+		t.Logf("  %s → %d: %s", url, status, preview)
+	}
+}
+
+func TestMealPlanHistory(t *testing.T) {
+	username := os.Getenv("PAPRIKA_USERNAME")
+	password := os.Getenv("PAPRIKA_PASSWORD")
+	if username == "" || password == "" {
+		t.Skip("PAPRIKA_USERNAME and PAPRIKA_PASSWORD not set")
+	}
+
+	client, err := paprika.NewClient(username, password, "dev", nil)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// Fetch meal plan entries going back 1 year to see if historical entries persist.
+	start := time.Now().AddDate(-1, 0, 0)
+	end := time.Now()
+	entries, err := client.ListMealPlanEntries(ctx, start, end)
+	require.NoError(t, err)
+
+	t.Logf("Found %d meal plan entries over past year", len(entries))
+	for _, e := range entries {
+		t.Logf("  %s — %s (%s)", e.Date, e.RecipeName, e.UID)
+	}
+
+	// Check if the raw meals endpoint returns more fields than what MealPlanEntry maps.
+	rawStatus, rawBody, err := client.ProbeEndpoint(ctx, "https://paprikaapp.com/api/v2/sync/meals/")
+	require.NoError(t, err)
+	require.Equal(t, 200, rawStatus)
+
+	var mealsResp struct {
+		Result []map[string]interface{} `json:"result"`
+	}
+	require.NoError(t, json.Unmarshal(rawBody, &mealsResp))
+	if len(mealsResp.Result) > 0 {
+		t.Logf("Raw meal plan entry fields: %v", mealsResp.Result[0])
+	}
+}
+
+func TestGetLastPreparedDates(t *testing.T) {
+	username := os.Getenv("PAPRIKA_USERNAME")
+	password := os.Getenv("PAPRIKA_PASSWORD")
+	if username == "" || password == "" {
+		t.Skip("PAPRIKA_USERNAME and PAPRIKA_PASSWORD not set")
+	}
+
+	client, err := paprika.NewClient(username, password, "dev", nil)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	dates, err := client.GetLastPreparedDates(ctx)
+	require.NoError(t, err)
+	assert.NotEmpty(t, dates, "expected at least one recipe with a last prepared date")
+
+	// Verify against the Slow Cooker Chicken Burrito Bowl — app shows Last Prepared 2/23/26.
+	// Look up its recipe UID from the recipes list rather than hardcoding.
+	recipes, err := client.ListRecipes(ctx)
+	require.NoError(t, err)
+	for _, r := range recipes.Result {
+		if lp, ok := dates[r.UID]; ok {
+			full, err := client.GetRecipe(ctx, r.UID)
+			if err != nil {
+				continue
+			}
+			if strings.Contains(full.Name, "Burrito Bowl") {
+				assert.Equal(t, "2026-02-23", lp.Format("2006-01-02"),
+					"Slow Cooker Chicken Burrito Bowl last prepared date should match app display of 2/23/26")
+				t.Logf("Slow Cooker Chicken Burrito Bowl (UID %s) last prepared: %s ✓", r.UID, lp.Format("2006-01-02"))
+				break
+			}
+		}
+	}
+
+	t.Logf("Total recipes with last prepared dates: %d", len(dates))
 }
 
 func TestClient(t *testing.T) {

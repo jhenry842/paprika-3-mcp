@@ -873,11 +873,11 @@ func (s *Server) removeMealFromPlan(ctx context.Context, req mcp.CallToolRequest
 
 func listRecipesTool() mcp.Tool {
 	return mcp.NewTool("list_recipes",
-		mcp.WithDescription("List all recipes with name, UID, categories, prep/cook time, and star rating. Use get_recipe to fetch full ingredients and directions for a specific recipe."),
+		mcp.WithDescription("List all recipes with name, UID, categories, prep/cook time, star rating, and last prepared date. Use get_recipe to fetch full ingredients and directions for a specific recipe."),
 	)
 }
 
-func (s *Server) listRecipes(_ context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (s *Server) listRecipes(ctx context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	s.recipesMu.RLock()
 	recipes := make([]*paprika.Recipe, 0, len(s.recipes))
 	for _, r := range s.recipes {
@@ -889,17 +889,27 @@ func (s *Server) listRecipes(_ context.Context, _ mcp.CallToolRequest) (*mcp.Cal
 		return mcp.NewToolResultText("No recipes found. Resources may still be loading — try again in a moment."), nil
 	}
 
+	lastPrepared, err := s.paprika3.GetLastPreparedDates(ctx)
+	if err != nil {
+		s.logger.Warn("failed to fetch last prepared dates", "error", err)
+		lastPrepared = map[string]time.Time{}
+	}
+
 	sort.Slice(recipes, func(i, j int) bool {
 		return recipes[i].Name < recipes[j].Name
 	})
 
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("## Recipes (%d total)\n\n", len(recipes)))
-	sb.WriteString("| Name | UID | Categories | Prep | Cook | Rating |\n|---|---|---|---|---|---|\n")
+	sb.WriteString("| Name | UID | Categories | Prep | Cook | Rating | Last Prepared |\n|---|---|---|---|---|---|---|\n")
 	for _, r := range recipes {
 		cats := strings.Join(r.Categories, ", ")
-		sb.WriteString(fmt.Sprintf("| %s | %s | %s | %s | %s | %d |\n",
-			r.Name, r.UID, cats, r.PrepTime, r.CookTime, r.Rating))
+		lp := ""
+		if t, ok := lastPrepared[r.UID]; ok {
+			lp = t.Format("2006-01-02")
+		}
+		sb.WriteString(fmt.Sprintf("| %s | %s | %s | %s | %s | %d | %s |\n",
+			r.Name, r.UID, cats, r.PrepTime, r.CookTime, r.Rating, lp))
 	}
 	return mcp.NewToolResultText(sb.String()), nil
 }
@@ -931,10 +941,21 @@ func (s *Server) getRecipe(ctx context.Context, req mcp.CallToolRequest) (*mcp.C
 		}
 	}
 
+	lastPrepared, err := s.paprika3.GetLastPreparedDates(ctx)
+	if err != nil {
+		s.logger.Warn("failed to fetch last prepared dates", "error", err)
+		lastPrepared = map[string]time.Time{}
+	}
+
+	var lp string
+	if t, ok := lastPrepared[recipe.UID]; ok {
+		lp = t.Format("2006-01-02")
+	}
+
 	return mcp.NewToolResultResource(recipe.Name, mcp.TextResourceContents{
 		URI:      fmt.Sprintf("paprika://recipes/%s", recipe.UID),
 		MIMEType: "text/markdown",
-		Text:     recipe.ToMarkdown(),
+		Text:     recipe.ToMarkdownWithLastPrepared(lp),
 	}), nil
 }
 

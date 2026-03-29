@@ -232,6 +232,10 @@ func (r *Recipe) ResourceDescription() string {
 }
 
 func (r *Recipe) ToMarkdown() string {
+	return r.ToMarkdownWithLastPrepared("")
+}
+
+func (r *Recipe) ToMarkdownWithLastPrepared(lastPrepared string) string {
 	var sb strings.Builder
 
 	sb.WriteString(fmt.Sprintf("# %s\n\n", r.Name))
@@ -240,7 +244,7 @@ func (r *Recipe) ToMarkdown() string {
 		sb.WriteString(fmt.Sprintf("_%s_\n\n", r.Description))
 	}
 
-	if r.Servings != "" || r.PrepTime != "" || r.CookTime != "" || r.Difficulty != "" {
+	if r.Servings != "" || r.PrepTime != "" || r.CookTime != "" || r.Difficulty != "" || lastPrepared != "" {
 		sb.WriteString("## Details\n")
 		if r.Servings != "" {
 			sb.WriteString(fmt.Sprintf("- **Servings:** %s\n", r.Servings))
@@ -253,6 +257,9 @@ func (r *Recipe) ToMarkdown() string {
 		}
 		if r.Difficulty != "" {
 			sb.WriteString(fmt.Sprintf("- **Difficulty:** %s\n", r.Difficulty))
+		}
+		if lastPrepared != "" {
+			sb.WriteString(fmt.Sprintf("- **Last Prepared:** %s\n", lastPrepared))
 		}
 		sb.WriteString("\n")
 	}
@@ -393,6 +400,22 @@ func (c *Client) GetRecipe(ctx context.Context, uid string) (*Recipe, error) {
 	}
 
 	return &recipeResp.Result, nil
+}
+
+// ProbeEndpoint makes a GET request to url and returns the status code and body.
+// Used for API exploration only — not for production use.
+func (c *Client) ProbeEndpoint(ctx context.Context, url string) (int, []byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return 0, nil, err
+	}
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return 0, nil, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	return resp.StatusCode, body, err
 }
 
 // GetRecipeRaw fetches the raw JSON bytes for a recipe — used to discover all API fields.
@@ -666,14 +689,17 @@ const (
 )
 
 type MealPlanEntry struct {
-	UID        string `json:"uid"`
-	RecipeUID  string `json:"recipe_uid"`
-	RecipeName string `json:"name"`
-	Date       string `json:"date"`       // "YYYY-MM-DD 00:00:00" (Paprika's format)
-	MealType   int    `json:"type"`       // 0-3; Paprika uses "type" not "meal_type"
-	OrderFlag  int    `json:"order_flag"`
-	Note       string `json:"note"`
-	Deleted    bool   `json:"deleted"`
+	UID          string  `json:"uid"`
+	RecipeUID    string  `json:"recipe_uid"`
+	RecipeName   string  `json:"name"`
+	Date         string  `json:"date"`       // "YYYY-MM-DD 00:00:00" (Paprika's format)
+	MealType     int     `json:"type"`       // 0-3; Paprika uses "type" not "meal_type"
+	TypeUID      *string `json:"type_uid"`
+	OrderFlag    int     `json:"order_flag"`
+	Note         string  `json:"note"`
+	IsIngredient bool    `json:"is_ingredient"`
+	Scale        *string `json:"scale"`
+	Deleted      bool    `json:"deleted"`
 }
 
 func (c *Client) ListMealPlanEntries(ctx context.Context, start, end time.Time) ([]MealPlanEntry, error) {
@@ -757,6 +783,38 @@ func (c *Client) DeleteMealPlanEntry(ctx context.Context, entry MealPlanEntry) e
 	}
 
 	return c.notify(ctx)
+}
+
+// GetLastPreparedDates returns a map of recipe_uid → most recent past meal plan date.
+// Entries with no recipe_uid (freeform notes) and future entries are excluded.
+func (c *Client) GetLastPreparedDates(ctx context.Context) (map[string]time.Time, error) {
+	// Fetch all entries — no date filter, so pass a very wide range.
+	all, err := c.ListMealPlanEntries(ctx, time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC), time.Now())
+	if err != nil {
+		return nil, err
+	}
+
+	result := make(map[string]time.Time)
+	now := time.Now()
+	for _, e := range all {
+		if e.RecipeUID == "" {
+			continue
+		}
+		t, err := time.Parse("2006-01-02 15:04:05", e.Date)
+		if err != nil {
+			t, err = time.Parse("2006-01-02", e.Date)
+			if err != nil {
+				continue
+			}
+		}
+		if t.After(now) {
+			continue // skip future planned entries
+		}
+		if existing, ok := result[e.RecipeUID]; !ok || t.After(existing) {
+			result[e.RecipeUID] = t
+		}
+	}
+	return result, nil
 }
 
 func (c *Client) SaveMealPlanEntry(ctx context.Context, entry MealPlanEntry) error {

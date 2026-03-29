@@ -25,6 +25,7 @@ type: project
 | 13 | Test suite + `UpdateGroceryItem` bug fix (14 tests) | f2d63b6 |
 | 20b | Staple items: `uncheck_grocery_items`, `delete_grocery_items`, staple rule type | 1a0c9ea |
 | 18 | `remove_meal_from_plan` — soft-delete via `deleted=true` on V1 sync endpoint | 4967c6e |
+| 21 | Last Prepared date — derived from meal plan history, shown in `list_recipes` + `get_recipe` | TBD |
 | — | Security: scrub credentials from repo history, use `~/.paprika-env` | 1d82d5b |
 
 ---
@@ -51,5 +52,4 @@ Wraps `get_pantry` + `get_household_rules`. Flags out-of-stock proteins, stale i
 ### #20 — Favorites via star ratings
 `rating` field likely already in recipe objects — verify. Expose in `list_recipes`, bias planner toward 4–5 star recipes. Also feed into #15.
 
-### #21 — Cook log and history ❌ closed — field doesn't exist
-Verified: `last_cooked_on` does not appear in the Paprika recipe API response. No cook history endpoint found. The recipe object has `created`, `rating`, `on_favorites`, `is_pinned` — but no cook timestamp. Not buildable without a new API surface.
+### ~~#21 — done~~
