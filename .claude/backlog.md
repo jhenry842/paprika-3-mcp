@@ -36,6 +36,7 @@ type: project
 | 19 | `delete_paprika_recipe` tool — wires existing `DeleteRecipe` client method | 73ac989 |
 | 27 | `plan-the-week` date format + arithmetic bug — fix `"YYYY-MM-DD 00:00:00"` → `"YYYY-MM-DD"`, explicit offset arithmetic | 73ac989 |
 | 15 | `what-can-i-make` skill — pantry → recipe match, ranked by rating + recency, optional meal plan write | 73ac989 |
+| 17 | `pantry-review` skill — on-demand mid-cycle health check: proteins, staples, low-stock flags | — |
 | — | Array param JSON string fallback — `delete_grocery_items`, `uncheck_grocery_items`, `update_grocery_item_aisle` | cf17637, ea9672f |
 | — | `get_meal_plan` now exposes entry UIDs and recipe UIDs — required for `remove_meal_from_plan` | c7135cf |
 | — | Security: scrub credentials from repo history, use `~/.paprika-env` | 1d82d5b |
@@ -50,8 +51,6 @@ type: project
 ### #16 — Scheduled planning trigger
 Wire plan-the-week to a recurring cron (Monday morning default, configurable) via the `schedule` skill. Verify how scheduled remote agents handle conversational skills.
 
-### #17 — Pantry review skill
-Standalone pantry health check: `get_pantry` + `get_household_rules`. Flags out-of-stock proteins, low-stock staples. Distinct from the close-cycle hygiene step (which only runs at cycle close) — this is an on-demand mid-cycle check.
 
 ### #22 — Quantity matching improvements
 During `close-cycle` depletion, recipe quantities ("2 tbsp soy sauce") frequently don't map to purchase units ("1 bottle"). Need a system that learns typical purchase quantities per ingredient — e.g., "2 tbsp soy sauce from a 10oz bottle = bottle stays in-stock." Options: household rules with per-ingredient purchase units, or a learned quantity map from grocery history. **Design first, build second.**

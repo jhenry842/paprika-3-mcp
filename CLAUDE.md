@@ -83,6 +83,7 @@ Skills live in `.claude/skills/` and are invoked by Claude Code users. Each skil
 | `sync-grocery-list` | "I'm done shopping", "sync the grocery list" | Post-shopping restock: sync checked items to pantry, uncheck staples, delete non-staples |
 | `setup-aisles` | "set up aisles", "fix the aisles" | Bulk-assign Woodman's East aisles to grocery list and/or pantry |
 | `close-cycle` | "close the cycle", "I'm done cooking", "full sync" | End-of-cycle canonical sync: deplete pantry from cooked meals → pantry hygiene → restock from shopping → advance `last_sync_date` |
+| `pantry-review` | "pantry check", "what do I have?", "what proteins do I have?" | On-demand mid-cycle health check: proteins, staples, low-stock flags — read-only, no modifications |
 
 ### The Meal Cycle
 
