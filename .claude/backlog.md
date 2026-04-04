@@ -60,3 +60,9 @@ During `close-cycle` depletion, recipe quantities ("2 tbsp soy sauce") frequentl
 
 ### #25 — Aisle map self-correction from manual Paprika changes
 When generating a grocery list or running setup-aisles, compare each item's current aisle in Paprika against what the aisle map would assign. If Paprika has a non-empty aisle that differs from the map, treat the Paprika value as the ground truth and update the map. Manual user corrections are always improvements. Only trigger when current aisle is non-empty AND conflicts with the map value — never overwrite a blank.
+
+### #30 — Recurring breakfast/lunch items in grocery generation
+During plan-the-week and grocery generation, proactively add household recurring non-dinner items (breakfast staples, lunch staples) to the grocery list. Should improve incrementally — each cycle, Claude can observe what gets manually added and suggest promoting items to the recurring list. **Mechanism: extend the `staple` household rule with an `occasion` field (`breakfast`, `lunch`, `household`) and an optional `weekly` flag. The generate-grocery-list skill reads these rules and adds them automatically. Keep data minimal — one rule per item, no history needed. New items get added to the rule set only when confirmed by the user.**
+
+### #29 — Pantry item age tracking
+Track when each pantry item was last restocked so that close-cycle and plan-the-week can surface items that have been sitting a long time. Enables waste minimization: deprioritize buying more of something that's been in the pantry untouched for multiple cycles, and flag long-sitting perishables during pantry hygiene. Options: store a `restocked_date` field on pantry items (requires API support or a local sidecar), or derive age from `last_sync_date` history. **Design first — verify what the Paprika pantry item schema supports before building.**

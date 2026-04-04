@@ -70,5 +70,24 @@
     "params": {
       "ingredient": "carrots"
     }
+  },
+  {
+    "id": "last-sync-date",
+    "type": "sync",
+    "description": "Last date the meal cycle was closed and pantry was synced.",
+    "params": {
+      "date": "2026-03-30"
+    }
+  },
+  {
+    "id": "monday-crockpot-swim-lessons",
+    "type": "planning",
+    "description": "Every Monday dinner should be a crock-pot recipe — family has swim lessons Monday nights and needs a ready meal.",
+    "params": {
+      "constraint": "crock-pot recipe",
+      "day": "monday",
+      "meal_type": "dinner",
+      "reason": "swim lessons on Monday nights"
+    }
   }
 ]

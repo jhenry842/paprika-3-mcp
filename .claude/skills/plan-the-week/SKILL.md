@@ -9,15 +9,19 @@ A full weekly planning workflow: pantry review → meal selection → meal plan 
 
 ## Step 1: Pantry Snapshot
 
-Call `get_pantry` and `get_household_rules`. Present a brief pantry summary to anchor the conversation:
+Call `get_pantry` and `get_household_rules`. Present a brief pantry summary as *context*, not as a constraint. The goal is to note what's on hand to avoid waste — not to limit meal choices to only what's in stock.
 
-**Anchor proteins** — list all proteins that are in-stock. These should drive meal selection. Proteins include: beef (ground, stew, roast, brisket, steak, short ribs), chicken (breast, thigh, drumstick, whole, ground), pork (chops, tenderloin, ground, sausage, bacon, ham), fish and seafood (salmon, cod, tilapia, shrimp, tuna, halibut), lamb, turkey.
+**Anchor proteins (animal)** — list in-stock animal proteins: beef (ground, stew, roast, brisket, steak, short ribs), chicken (breast, thigh, drumstick, whole, ground), pork (chops, tenderloin, ground, sausage, bacon, ham), fish and seafood (salmon, cod, tilapia, shrimp, tuna, halibut), lamb, turkey.
 
-**Other anchor ingredients** — list any notable in-stock pantry items that are worth using up: whole vegetables, specialty ingredients, anything that might expire soon. Keep this list short (5 items max) — focus on things that meaningfully constrain meal choice.
+**Anchor proteins (plant)** — list in-stock plant proteins: beans (black, white, pinto, refried), lentils, chickpeas, tofu, tempeh, edamame, eggs. These are equally valid meal drivers as animal proteins.
 
-**Out of stock** — briefly note if any common proteins or staples are out of stock, since they'll need to be bought regardless.
+**Other notable ingredients** — list any whole vegetables, specialty items, or anything that might expire soon (5 items max). These are "worth using up" candidates, not requirements.
+
+**Out of stock** — briefly note if any common proteins or staples are missing and will need to be bought.
 
 Format as a short, scannable summary. Do not dump the full pantry list.
+
+**Household planning rules** — scan `get_household_rules` for any rules with `type: "planning"`. These are active scheduling constraints. For each one, check whether it applies to the planning window (compare today's date to the rule's `expires` field if present — skip expired rules). Surface any active constraints before meal selection. Example: a rule requiring crock-pot meals on Mondays through a given date should pre-assign Monday's slot before other meals are proposed.
 
 ## Step 2: Confirm the Date Range
 
@@ -45,11 +49,11 @@ Ask the user how they want to plan. Present these three options clearly:
 
 ---
 
-**Tried and True** — Pull from your existing Paprika recipe library. Prioritize recipes that use in-stock proteins and pantry staples. I'll suggest a week of meals and you confirm or swap.
+**Tried and True** — Pull from your existing Paprika recipe library. Mix pantry-use meals with easy, healthy classics you love. Max 2–4 meat nights; the rest are plant-protein or vegetarian. I'll suggest a week and you confirm or swap.
 
-**Try Something New** — Same as above but reserve 1–2 slots for recipes you haven't made recently. I'll show you a few options for those slots and you pick.
+**Try Something New** — Same as Tried and True, but reserve 1–2 slots for variety: recipes you haven't made in a while, or something from a cuisine you haven't tried recently. I'll offer options for those slots and you pick.
 
-**Let AI Take the Wheel** — I'll build a full week of meals from scratch. I'll ask you a few questions (cuisines, dietary goals, how adventurous), search for recipes, create them in Paprika, and plan the week.
+**Let AI Take the Wheel** — I'll build a full week from scratch. I'll ask a few questions (cuisines, dietary goals, how adventurous, how many cooking nights), search for recipes, create them in Paprika, and plan the week.
 
 ---
 
@@ -57,38 +61,53 @@ Wait for the user to respond before proceeding.
 
 ## Step 5: Select Meals
 
+### Meat constraint (applies to all three modes)
+
+**Every proposed week must have at most 2–4 meat-based dinners.** Meat includes: beef, pork, chicken, fish/seafood, lamb, turkey. The remaining dinners must be plant-protein or vegetarian (beans, lentils, chickpeas, eggs, tofu, etc.).
+
+When presenting the proposed week, always show the breakdown explicitly:
+> e.g. "3 meat nights (Mon, Wed, Sat), 4 plant/vegetarian nights"
+
+If the user's pantry is heavy on animal protein, note it but don't let it override the constraint — suggest shopping for plant-protein ingredients to fill the remaining slots.
+
+---
+
 ### Tried and True
 
-Call `list_recipes` to get the full recipe library — the response includes a **Last Prepared** column. Filter to recipes that use in-stock proteins (by category tags or recipe name — use judgment). Propose 5–7 dinners that:
+Call `list_recipes` to get the full recipe library — the response includes a **Last Prepared** column. Propose 5–7 dinners that:
 
-- Use at least one in-stock protein each
+- **Respect the meat constraint** — max 2–4 meat nights, rest plant/vegetarian
 - Vary by protein type and cuisine — don't repeat the same protein two nights in a row
+- Balance three types of meals across the week:
+  - **Pantry-use** — recipes that make good use of what's already on hand
+  - **Easy classics** — high-rated recipes the household loves that are practical on a weeknight
+  - **Variety slot** — at least 1 recipe that adds something different (new cuisine, ingredient, or technique)
 - Are practical for a week (not all 4-hour braises)
-- **Prefer recipes not cooked in the last 3 weeks** — use Last Prepared to deprioritize anything made recently. Don't repeat a recipe that appeared on the plan in the past 7 days.
+- **Prefer recipes not cooked in the last 3 weeks** — use Last Prepared to deprioritize anything made recently. Don't repeat a recipe from the past 7 days.
 
-Present the proposed week as a simple list (Mon–Sun dinners). Ask the user to confirm, swap specific days, or add lunches/breakfasts if they want.
+Present the proposed week as a simple list (Mon–Sun dinners) with the meat/plant breakdown noted. Ask the user to confirm, swap specific days, or add lunches/breakfasts if they want.
 
 ### Try Something New
 
-Do the same as Tried and True for most slots. For 1–2 "new" slots, use Last Prepared to find recipes the user hasn't made recently (no Last Prepared date, or last prepared > 6 weeks ago) with a good rating (3+ stars). Offer 2–3 options per slot and let the user pick.
+Same as Tried and True, but dedicate 1–2 slots explicitly to variety: recipes with no Last Prepared date or last prepared > 6 weeks ago, rating 3+ stars. Offer 2–3 options per variety slot and let the user pick.
 
-If the recipe library has no good "new" candidates, note that and ask if the user wants to search the web for one.
+If the recipe library has no good variety candidates, note it and ask if the user wants to search the web for one.
 
 ### Let AI Take the Wheel
 
 Ask the user these questions before searching:
 
 1. Any cuisines you're in the mood for this week?
-2. Any dietary goals or restrictions (lighter meals, no red meat, etc.)?
+2. Any dietary goals beyond the usual (lighter meals, fully plant-based week, etc.)?
 3. How adventurous — familiar comfort food, or something you've never made?
-4. How many nights do you want to cook vs. leftovers?
+4. How many nights do you want to cook vs. use leftovers?
 
-Then use web search to find recipes matching the answers and pantry anchors. For each recipe you want to create:
+Then use web search to find recipes matching the answers. Aim for a week that hits the meat constraint and mixes pantry-use, easy classics, and variety. For each new recipe:
 - Find a complete recipe (ingredients + instructions)
 - Call `create_paprika_recipe` with full details
 - Confirm with the user before adding it to the plan
 
-Present the full proposed week before committing any `add_meal_to_plan` calls.
+Present the full proposed week (with meat/plant breakdown) before committing any `add_meal_to_plan` calls.
 
 ## Step 6: Confirm and Add to Plan
 
