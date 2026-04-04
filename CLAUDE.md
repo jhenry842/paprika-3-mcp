@@ -70,7 +70,8 @@ Household rules are a typed key-value store persisted in `rules/household.json`.
 - `staple` — ingredient kept on the grocery list after shopping (unchecked, not deleted)
 - `substitution` — swap one ingredient for another during grocery generation
 - `sync` — system-managed anchor dates (e.g., `last-sync-date`)
-- `history` — system-managed purchase history. `id: "grocery-history"` stores `params.cycles`: an array of up to 5 recent cycle records, each with `cycle_end` (YYYY-MM-DD) and `purchased` (array of ingredient names). Written by `close-cycle` and `sync-grocery-list`; read by `generate-grocery-list` to suggest recurring items.
+- `planning` — scheduling constraint applied during `plan-the-week`. Params: `day` (e.g., `"monday"`), `meal_type` (`"dinner"`), `constraint` (free-text, e.g., `"crock-pot recipe"`), `reason` (human-readable explanation), optional `expires` (YYYY-MM-DD — skip rule after this date).
+- `history` — system-managed purchase history. `id: "grocery-history"` stores `params.cycles`: an array of up to 5 recent cycle records, each with `cycle_end` (YYYY-MM-DD) and `purchased` (array of ingredient names). Written by `close-cycle` and `sync-grocery-list`; read by `generate-grocery-list` to suggest recurring items not covered by the current meal plan.
 
 ## Skills
 
@@ -80,7 +81,7 @@ Skills live in `.claude/skills/` and are invoked by Claude Code users. Each skil
 |---|---|---|
 | `plan-the-week` | "plan the week", "what should we eat" | Pantry review → meal selection → meal plan → grocery list |
 | `what-can-i-make` | "what can I make tonight?", "what can I cook?" | Match in-stock pantry → recipes; ranked by rating + recency; optional meal plan write |
-| `generate-grocery-list` | "generate grocery list", "what do I need to buy" | Turn meal plan into a shopping list, cross-referenced against pantry |
+| `generate-grocery-list` | "generate grocery list", "what do I need to buy" | Turn meal plan into a shopping list, cross-referenced against pantry; suggests recurring items from purchase history |
 | `sync-grocery-list` | "I'm done shopping", "sync the grocery list" | Post-shopping restock: sync checked items to pantry, uncheck staples, delete non-staples |
 | `setup-aisles` | "set up aisles", "fix the aisles" | Bulk-assign Woodman's East aisles to grocery list and/or pantry |
 | `close-cycle` | "close the cycle", "I'm done cooking", "full sync" | End-of-cycle canonical sync: deplete pantry from cooked meals → pantry hygiene → restock from shopping → advance `last_sync_date` |
@@ -97,6 +98,10 @@ The intended flow for each meal planning cycle:
 `last_sync_date` is stored as a household rule (`id: "last-sync-date"`). It marks the start of the next depletion window. On first run (no rule present), depletion is skipped entirely for a clean start.
 
 **Important:** `sync-grocery-list` is for mid-cycle top-up shops only. It does NOT deplete the pantry and does NOT advance `last_sync_date`. Use `close-cycle` for end-of-cycle syncs.
+
+### Purchase History
+
+Both `close-cycle` and `sync-grocery-list` silently record purchased ingredients to a `grocery-history` household rule after each shopping sync. The record keeps up to 5 recent cycles. `generate-grocery-list` reads this history at the end of generation and asks about items bought in 2+ past cycles that aren't on the current list — surfacing breakfast staples, household supplies, and other recurring non-dinner items without requiring explicit configuration. The system is silent until it has enough data to make useful suggestions.
 
 ### Last Prepared Date
 
