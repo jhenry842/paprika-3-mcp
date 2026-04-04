@@ -144,6 +144,18 @@ If there are no checked items, note it and continue — don't abort the cycle cl
 
 ---
 
+## Step 7b: Record Purchase History
+
+Silently record what was purchased this cycle so future grocery generation can surface recurring patterns.
+
+1. From the checked grocery items processed in Step 7, collect the `ingredient` field (lowercase) for each item. Include both staples and non-staples — everything purchased. Deduplicate.
+2. Find the `grocery-history` rule in the household rules already fetched. If it exists, extract `params.cycles`; if not, start with an empty array.
+3. Append a new cycle record: `{ "cycle_end": "<today YYYY-MM-DD>", "purchased": [<ingredient list>] }`.
+4. Trim the array to the most recent 5 entries (drop oldest if needed).
+5. Call `set_household_rule` with `id: "grocery-history"`, `type: "history"`, `description: "Purchase history across recent grocery cycles — used to suggest recurring items during grocery generation"`, and the updated `params.cycles`.
+
+Do this silently — no user-facing output for this step.
+
 ## Step 8: Advance the Sync Date
 
 Call `set_household_rule` with:

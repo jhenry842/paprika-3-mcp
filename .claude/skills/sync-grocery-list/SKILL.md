@@ -64,6 +64,18 @@ If any staples were identified, call `uncheck_grocery_items` with their UIDs. Th
 
 Call `delete_grocery_items` with the UIDs of all non-staple checked items.
 
+## Step 5b: Record Purchase History
+
+Silently record what was purchased this trip so future grocery generation can surface recurring patterns.
+
+1. From the checked items processed in Steps 3–5, collect the `ingredient` field (lowercase) for each item — both staples and non-staples. Deduplicate.
+2. Call `get_household_rules`. Find the rule with `id: "grocery-history"`. If it exists, extract `params.cycles`; if not, start with an empty array.
+3. Append a new record: `{ "cycle_end": "<today YYYY-MM-DD>", "purchased": [<ingredient list>] }`.
+4. Trim the array to the most recent 5 entries.
+5. Call `set_household_rule` with `id: "grocery-history"`, `type: "history"`, `description: "Purchase history across recent grocery cycles — used to suggest recurring items during grocery generation"`, and the updated `params.cycles`.
+
+Do this silently — no user-facing output.
+
 ## Step 6: Summary
 
 Report what happened concisely:

@@ -70,6 +70,7 @@ Household rules are a typed key-value store persisted in `rules/household.json`.
 - `staple` — ingredient kept on the grocery list after shopping (unchecked, not deleted)
 - `substitution` — swap one ingredient for another during grocery generation
 - `sync` — system-managed anchor dates (e.g., `last-sync-date`)
+- `history` — system-managed purchase history. `id: "grocery-history"` stores `params.cycles`: an array of up to 5 recent cycle records, each with `cycle_end` (YYYY-MM-DD) and `purchased` (array of ingredient names). Written by `close-cycle` and `sync-grocery-list`; read by `generate-grocery-list` to suggest recurring items.
 
 ## Skills
 

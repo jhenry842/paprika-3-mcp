@@ -95,6 +95,22 @@ For each ingredient that needs to be purchased, call `add_grocery_item`:
 
 Aisle assignment is automatic — do not set it manually.
 
+### Step 8: Suggest Based on Purchase History
+
+After all recipe-derived items are added, check whether past cycles reveal recurring non-dinner purchases that aren't on this list yet.
+
+1. From the household rules already fetched in Step 4, find the rule with `id: "grocery-history"`. If it doesn't exist yet, skip this step silently.
+2. Look at `params.cycles` — use all available entries (up to 5). Find ingredient names that appear in **2 or more** of those cycles.
+3. Filter out:
+   - Anything already on the current grocery list (added in this run or already present from Step 6)
+   - Anything covered by an in-stock pantry item that was skipped in Step 3
+   - Anything matching a `staple` rule (`params.ingredient`) — staples have their own path and stay on the list automatically
+4. If candidates remain, ask conversationally:
+   > "Based on your past shopping, you've consistently bought: **[item A]**, **[item B]**, **[item C]** — none of those are on the list yet. Want me to add any of them?"
+   
+   Wait for the user's response. Add confirmed items via `add_grocery_item` (omit `recipe` and `recipe_uid` — these aren't recipe-derived).
+5. If no candidates, skip silently — don't mention history at all.
+
 ## Output Summary
 
 After adding all items, report:
