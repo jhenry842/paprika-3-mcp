@@ -356,12 +356,13 @@ func (s *Server) updateGroceryItemAisle(ctx context.Context, req mcp.CallToolReq
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 	byUID := make(map[string]paprika.GroceryItem, len(existing))
-	aisleUIDs := make(map[string]string) // aisle name → aisle_uid
 	for _, item := range existing {
 		byUID[item.UID] = item
-		if item.Aisle != "" && item.AisleUID != "" {
-			aisleUIDs[item.Aisle] = item.AisleUID
-		}
+	}
+
+	groceryAisles, err := s.paprika3.ListGroceryAisles(ctx)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to fetch aisles: %v", err)), nil
 	}
 
 	var updated, errs []string
@@ -379,7 +380,9 @@ func (s *Server) updateGroceryItemAisle(ctx context.Context, req mcp.CallToolReq
 			continue
 		}
 		item.Aisle = aisle
-		item.AisleUID = aisleUIDs[aisle]
+		if a, ok := groceryAisles[aisle]; ok {
+			item.AisleUID = a.UID
+		}
 		if err := s.paprika3.UpdateGroceryItem(ctx, item); err != nil {
 			errs = append(errs, fmt.Sprintf("failed to update %s: %v", uid, err))
 			continue
@@ -414,19 +417,16 @@ func (s *Server) addGroceryItem(ctx context.Context, req mcp.CallToolRequest) (*
 	recipe, _ := req.Params.Arguments["recipe"].(string)
 	recipeUID, _ := req.Params.Arguments["recipe_uid"].(string)
 
-	// Fetch existing items to copy list_uid and build aisle name → aisle_uid map.
+	// Fetch existing items to copy list_uid.
 	existing, err := s.paprika3.ListGroceryItems(ctx)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("failed to fetch grocery list: %v", err)), nil
 	}
 	var listUID string
-	aisleUIDs := make(map[string]string) // aisle name → aisle_uid
 	for _, it := range existing {
-		if listUID == "" {
+		if it.ListUID != "" {
 			listUID = it.ListUID
-		}
-		if it.Aisle != "" && it.AisleUID != "" {
-			aisleUIDs[it.Aisle] = it.AisleUID
+			break
 		}
 	}
 
@@ -434,7 +434,15 @@ func (s *Server) addGroceryItem(ctx context.Context, req mcp.CallToolRequest) (*
 	if aisle == "" {
 		aisle, _ = s.aisleMap.Lookup(ingredient)
 	}
-	aisleUID := aisleUIDs[aisle]
+
+	groceryAisles, err := s.paprika3.ListGroceryAisles(ctx)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to fetch aisles: %v", err)), nil
+	}
+	var aisleUID string
+	if a, ok := groceryAisles[aisle]; ok {
+		aisleUID = a.UID
+	}
 
 	var recipePtr, recipeUIDPtr *string
 	if recipe != "" {

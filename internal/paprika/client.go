@@ -504,6 +504,42 @@ func (c *Client) SaveRecipe(ctx context.Context, recipe Recipe) (*Recipe, error)
 	return &recipe, nil
 }
 
+type GroceryAisle struct {
+	UID       string `json:"uid"`
+	Name      string `json:"name"`
+	OrderFlag int    `json:"order_flag"`
+}
+
+// ListGroceryAisles fetches all configured grocery aisles from the V2 API.
+// The returned map is keyed by aisle name (case-sensitive) for easy lookup.
+func (c *Client) ListGroceryAisles(ctx context.Context) (map[string]GroceryAisle, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		"https://paprikaapp.com/api/v2/sync/groceryaisles/", nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		b, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("paprika API error %d: %s", resp.StatusCode, b)
+	}
+	var envelope struct {
+		Result []GroceryAisle `json:"result"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
+		return nil, err
+	}
+	m := make(map[string]GroceryAisle, len(envelope.Result))
+	for _, a := range envelope.Result {
+		m[a.Name] = a
+	}
+	return m, nil
+}
+
 type GroceryItem struct {
 	UID         string  `json:"uid"`
 	Name        string  `json:"name"`
