@@ -356,8 +356,12 @@ func (s *Server) updateGroceryItemAisle(ctx context.Context, req mcp.CallToolReq
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 	byUID := make(map[string]paprika.GroceryItem, len(existing))
+	aisleUIDs := make(map[string]string) // aisle name → aisle_uid
 	for _, item := range existing {
 		byUID[item.UID] = item
+		if item.Aisle != "" && item.AisleUID != "" {
+			aisleUIDs[item.Aisle] = item.AisleUID
+		}
 	}
 
 	var updated, errs []string
@@ -375,6 +379,7 @@ func (s *Server) updateGroceryItemAisle(ctx context.Context, req mcp.CallToolReq
 			continue
 		}
 		item.Aisle = aisle
+		item.AisleUID = aisleUIDs[aisle]
 		if err := s.paprika3.UpdateGroceryItem(ctx, item); err != nil {
 			errs = append(errs, fmt.Sprintf("failed to update %s: %v", uid, err))
 			continue
